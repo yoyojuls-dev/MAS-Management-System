@@ -38,12 +38,6 @@ interface PasswordData {
   confirmPassword: string;
 }
 
-const [passwordData, setPasswordData] = useState<PasswordData>({
-  currentPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-});
-
 interface Notification {
   id: string;
   message: string;
@@ -64,17 +58,17 @@ interface CalendarDay {
   duties: string[];
 }
 
-interface MemberProfile {
-  id: string;
-  fullName: string;
-  surname: string;
-  givenName: string;
-  email: string;
-  memberStatus: string;
-  serverLevel: string;
-  phone?: string;
-  address?: string;
-}
+// interface MemberProfile {
+//   id: string;
+//   fullName: string;
+//   surname: string;
+//   givenName: string;
+//   email: string;
+//   memberStatus: string;
+//   serverLevel: string;
+//   phone?: string;
+//   address?: string;
+// }
 
 interface Due {
   id: string;
@@ -123,6 +117,12 @@ export default function MemberDashboard() {
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<MemberProfile | null>(null);
   const [isLoadingAdditionalData, setIsLoadingAdditionalData] = useState(false);
+
+  const [passwordData, setPasswordData] = useState<PasswordData>({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+});
 
   useEffect(() => {
     if (status === "authenticated" && session?.user?.userType === "ADMIN") {
