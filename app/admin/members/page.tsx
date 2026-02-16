@@ -1,4 +1,4 @@
-// app/admin/members/page.tsx - Updated with gradient blue design
+// app/admin/members/page.tsx - Fixed version with functional edit button and hidden bottom nav
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -91,6 +91,7 @@ export default function UserManagement() {
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [showAddMemberForm, setShowAddMemberForm] = useState(false);
   const [showAddOfficerForm, setShowAddOfficerForm] = useState(false);
   const [removeConfirmation, setRemoveConfirmation] = useState<RemoveConfirmation>({
@@ -194,23 +195,23 @@ export default function UserManagement() {
   };
 
   const determineServiceLevel = (yearsOfService: number): 'Neophyte' | 'Junior' | 'Senior Server' => {
-  if (yearsOfService >= 1 && yearsOfService <= 2) return 'Neophyte';
-  if (yearsOfService >= 3 && yearsOfService <= 4) return 'Junior';
-  if (yearsOfService >= 5) return 'Senior Server';
-  return 'Neophyte'; // Default for 0 years
-};
+    if (yearsOfService >= 1 && yearsOfService <= 2) return 'Neophyte';
+    if (yearsOfService >= 3 && yearsOfService <= 4) return 'Junior';
+    if (yearsOfService >= 5) return 'Senior Server';
+    return 'Neophyte'; // Default for 0 years
+  };
 
   const getServiceLevelAbbreviation = (level: string): string => {
-  switch (level) {
-    case 'NEOPHYTE':
-      return 'NEOPHYTE';
-    case 'SENIOR':
-      return 'JUNIOR';
-    case 'Senior Server':
-      return 'SENIOR';
-    default: return 'SENIOR';
-  }
-};
+    switch (level) {
+      case 'NEOPHYTE':
+        return 'NEOPHYTE';
+      case 'SENIOR':
+        return 'JUNIOR';
+      case 'Senior Server':
+        return 'SENIOR';
+      default: return 'SENIOR';
+    }
+  };
 
   const handleMemberSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -377,6 +378,7 @@ export default function UserManagement() {
       
       setMembers(prev => prev.filter(m => m.id !== removeConfirmation.member?.id));
       setRemoveConfirmation({ isOpen: false, member: null });
+      setSelectedMember(null);
       
     } catch (error: any) {
       console.error("Error removing member:", error);
@@ -708,7 +710,7 @@ export default function UserManagement() {
         </div>
       </div>
 
-      {/* Remove Confirmation Modal - keeping original design */}
+      {/* Remove Confirmation Modal */}
       {removeConfirmation.isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full">
@@ -759,8 +761,8 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Member Details Modal - keeping original but with gradient header */}
-      {selectedMember && (
+      {/* Member Details Modal - FIXED: with functional edit button and hidden bottom nav */}
+      {selectedMember && !editingMember && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div 
@@ -845,6 +847,7 @@ export default function UserManagement() {
 
                 <div className="flex space-x-3 pt-4">
                   <button 
+                    onClick={() => setEditingMember(selectedMember)}
                     style={{
                       background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
                     }}
@@ -868,7 +871,7 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Add Member Form Modal - with gradient header */}
+      {/* Add Member Form Modal */}
       {showAddMemberForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -1105,7 +1108,7 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Add Officer Form Modal - with gradient header */}
+      {/* Add Officer Form Modal */}
       {showAddOfficerForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -1232,44 +1235,46 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Bottom Navigation */}
-      <div 
-        className="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-[30px] p-4 shadow-2xl z-50"
-        style={{
-          background: '#000080',
-          transform: 'translateX(-50%)'
-        }}
-      >
-        <div className="flex justify-center space-x-8 px-4">
-          <button
-            onClick={() => router.push('/admin')}
-            className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
-          >
-            <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-            </svg>
-            <span className="text-xs">Home</span>
-          </button>
-          <button
-            onClick={() => router.push('/admin/messages')}
-            className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
-          >
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <span className="text-xs">Messages</span>
-          </button>
-          <button
-            onClick={() => router.push('/admin/birthdays')}
-            className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
-          >
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197v0M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <span className="text-xs">Birthdays</span>
-          </button>
+      {/* Bottom Navigation - HIDDEN when viewing member details */}
+      {!selectedMember && !editingMember && (
+        <div 
+          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-[30px] p-4 shadow-2xl z-50"
+          style={{
+            background: '#000080',
+            transform: 'translateX(-50%)'
+          }}
+        >
+          <div className="flex justify-center space-x-8 px-4">
+            <button
+              onClick={() => router.push('/admin')}
+              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+              </svg>
+              <span className="text-xs">Home</span>
+            </button>
+            <button
+              onClick={() => router.push('/admin/messages')}
+              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span className="text-xs">Messages</span>
+            </button>
+            <button
+              onClick={() => router.push('/admin/birthdays')}
+              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197v0M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              <span className="text-xs">Birthdays</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
