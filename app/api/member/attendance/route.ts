@@ -1,36 +1,34 @@
-export const dynamic = 'force-dynamic';
-
+// app/api/member/attendance/route.ts
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/authConfig';
-import prisma from '@/lib/prismadb';
+import { prisma } from '@/lib/prisma';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const session = await getServerSession();
+    
+    if (!session || !session.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Find member by user ID
-    const account = await prisma.account.findFirst({
+    // Find the member by email (same pattern as profile)
+    const member = await prisma.member.findFirst({
       where: {
-        userId: session.user.id,
-        userType: 'MEMBER'
+        email: session.user.email,
       },
-      include: {
-        member: true
-      }
+      select: {
+        id: true,
+      },
     });
 
-    if (!account?.member) {
+    if (!member) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
     // Fetch attendance records for this member
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
-        memberId: account.member.id
+        memberId: member.id
       },
       orderBy: { eventDate: 'desc' }
     });
@@ -49,6 +47,9 @@ export async function GET(request: Request) {
     return NextResponse.json(formattedAttendance);
   } catch (error) {
     console.error('Error fetching attendance:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to fetch attendance' },
+      { status: 500 }
+    );
   }
 }
