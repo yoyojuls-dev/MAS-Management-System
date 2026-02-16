@@ -16,7 +16,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Find the member by email (same pattern as profile)
+    // Find the member by email
     const member = await prisma.member.findFirst({
       where: {
         email: session.user.email,
@@ -31,6 +31,7 @@ export async function GET() {
     }
 
     // Fetch financial records (dues) for this member
+    // Using FinancialRecord model with DUES type
     const dues = await prisma.financialRecord.findMany({
       where: {
         memberId: member.id,
@@ -53,7 +54,10 @@ export async function GET() {
         status: due.status === 'PAID' ? 'PAID' : 'UNPAID',
         dueDate: due.dueDate,
         paidDate: due.status === 'PAID' ? due.transactionDate : null,
-        description: due.description
+        description: due.description,
+        paymentMethod: due.paymentMethod,
+        referenceNumber: due.referenceNumber,
+        notes: due.notes
       };
     });
 

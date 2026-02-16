@@ -11,7 +11,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Find the member by email (same pattern as profile)
+    // Find the member by email
     const member = await prisma.member.findFirst({
       where: {
         email: session.user.email,
@@ -26,6 +26,7 @@ export async function GET() {
     }
 
     // Fetch attendance records for this member
+    // Using Attendance model with eventType (SUNDAY_MASS, DAILY_MASS, MONTHLY_MEETING, etc.)
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
         memberId: member.id
@@ -36,9 +37,9 @@ export async function GET() {
     // Format attendance data
     const formattedAttendance = attendanceRecords.map(record => ({
       id: record.id,
-      type: record.eventType || 'SUNDAY_MASS',
+      type: record.eventType, // SUNDAY_MASS, DAILY_MASS, MONTHLY_MEETING, SPECIAL_EVENT, TRAINING, RETREAT
       date: record.eventDate,
-      status: record.status || 'ABSENT',
+      status: record.status, // PRESENT, ABSENT, EXCUSED, LATE, EARLY_DEPARTURE
       serviceTime: record.serviceTime,
       arrivalTime: record.arrivalTime,
       notes: record.notes

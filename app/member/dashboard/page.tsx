@@ -12,6 +12,38 @@ import { Inter } from 'next/font/google'
 
 const inter = Inter({ subsets: ['latin'] });
 
+interface MemberProfile {
+  id: string;
+  fullName: string;
+  surname: string;
+  givenName: string;
+  email: string;
+  phone?: string;
+  birthdate?: Date | string;
+  memberStatus: string;
+  serverLevel: string;
+  dateJoined: Date | string;  // ← This was missing!
+  image?: string;
+  address?: string;
+  parentGuardian?: string;
+  emergencyContact?: string;
+  emergencyNumber?: string;
+  school?: string;
+  occupation?: string;
+}
+
+interface PasswordData {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+const [passwordData, setPasswordData] = useState<PasswordData>({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+});
+
 interface Notification {
   id: string;
   message: string;
@@ -260,13 +292,13 @@ export default function MemberDashboard() {
   };
 
   const handleEditChange = (field: keyof MemberProfile, value: string) => {
-    if (formData) {
-      setFormData({
-        ...formData,
-        [field]: value,
-      });
-    }
-  };
+  if (formData) {
+    setFormData({
+      ...formData,
+      [field]: value,
+    });
+  }
+};
 
   const handleSaveProfile = async () => {
     try {
@@ -641,83 +673,124 @@ export default function MemberDashboard() {
           </>
         )}
 
-        {/* PROFILE TAB */}
-        {activeTab === 'profile' && (
-          <div>
-            {!editMode ? (
-              <div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="text-sm font-medium text-gray-600">Full Name</label>
-                    <p className="text-lg text-gray-900">{memberProfile?.fullName || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600">Email</label>
-                    <p className="text-lg text-gray-900">{memberProfile?.email || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600">Phone</label>
-                    <p className="text-lg text-gray-900">{memberProfile?.phone || 'Not provided'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600">Server Level</label>
-                    <p className="text-lg text-gray-900">{memberProfile?.serverLevel || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600">Member Status</label>
-                    <p className="text-lg text-gray-900">{memberProfile?.memberStatus || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600">Group</label>
-                    <p className="text-lg text-gray-900">{memberGroup}</p>
-                  </div>
-                  {memberProfile?.address && (
-                    <div className="md:col-span-2">
-                      <label className="text-sm font-medium text-gray-600">Address</label>
-                      <p className="text-lg text-gray-900">{memberProfile.address}</p>
-                    </div>
-                  )}
+        {/* // Add this to your member dashboard page.tsx in the PROFILE TAB section
+// Replace the existing profile tab code with this */}
+
+      {activeTab === 'profile' && (
+        <div>
+          {!editMode ? (
+            <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Full Name</label>
+                  <p className="text-lg text-gray-900">{memberProfile?.fullName || 'N/A'}</p>
                 </div>
-                <button
-                  onClick={() => setEditMode(true)}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Edit Profile
-                </button>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Email</label>
+                  <p className="text-lg text-gray-900">{memberProfile?.email || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Phone</label>
+                  <p className="text-lg text-gray-900">{memberProfile?.phone || 'Not provided'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Server Level</label>
+                  <p className="text-lg text-gray-900">{memberProfile?.serverLevel || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Member Status</label>
+                  <p className="text-lg text-gray-900">{memberProfile?.memberStatus || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Date Joined</label>
+                  <p className="text-lg text-gray-900">
+                    {memberProfile?.dateJoined 
+                      ? new Date(memberProfile.dateJoined).toLocaleDateString() 
+                      : 'N/A'}
+                  </p>
+                </div>
               </div>
-            ) : (
-              <form onSubmit={(e) => { e.preventDefault(); handleSaveProfile(); }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <input
-                    type="text"
-                    placeholder="Full Name"
-                    value={formData?.fullName || ''}
-                    onChange={(e) => handleEditChange('fullName', e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <input
-                    type="email"
-                    placeholder="Email"
-                    value={formData?.email || ''}
-                    onChange={(e) => handleEditChange('email', e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Phone"
-                    value={formData?.phone || ''}
-                    onChange={(e) => handleEditChange('phone', e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Address"
-                    value={formData?.address || ''}
-                    onChange={(e) => handleEditChange('address', e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 md:col-span-2"
-                  />
+              <button
+                onClick={() => setEditMode(true)}
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Edit Profile
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveProfile(); }}>
+              <div className="space-y-6">
+                {/* Profile Information Section */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <input
+                      type="text"
+                      placeholder="Full Name"
+                      value={formData?.fullName || ''}
+                      onChange={(e) => handleEditChange('fullName', e.target.value)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="email"
+                      placeholder="Email"
+                      value={formData?.email || ''}
+                      onChange={(e) => handleEditChange('email', e.target.value)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="tel"
+                      placeholder="Phone"
+                      value={formData?.phone || ''}
+                      onChange={(e) => handleEditChange('phone', e.target.value)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
-                <div className="flex gap-3">
+
+                {/* Password Change Section */}
+                <div className="border-t pt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Change Password (Optional)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <input
+                      type="password"
+                      placeholder="Current Password"
+                      value={passwordData?.currentPassword || ''}
+                      onChange={(e) => setPasswordData({
+                        ...passwordData,
+                        currentPassword: e.target.value
+                      })}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div></div>
+                    <input
+                      type="password"
+                      placeholder="New Password"
+                      value={passwordData?.newPassword || ''}
+                      onChange={(e) => setPasswordData({
+                        ...passwordData,
+                        newPassword: e.target.value
+                      })}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Confirm New Password"
+                      value={passwordData?.confirmPassword || ''}
+                      onChange={(e) => setPasswordData({
+                        ...passwordData,
+                        confirmPassword: e.target.value
+                      })}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Leave blank if you don't want to change your password. Password must be at least 8 characters.
+                  </p>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex gap-3 border-t pt-6">
                   <button
                     type="submit"
                     className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -729,16 +802,18 @@ export default function MemberDashboard() {
                     onClick={() => {
                       setEditMode(false);
                       setFormData(memberProfile);
+                      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
                     }}
                     className="bg-gray-300 text-gray-900 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors"
                   >
                     Cancel
                   </button>
                 </div>
-              </form>
-            )}
-          </div>
-        )}
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
         {/* DUES TAB */}
         {activeTab === 'dues' && (
