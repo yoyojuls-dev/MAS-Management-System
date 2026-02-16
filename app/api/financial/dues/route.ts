@@ -1,85 +1,70 @@
 // app/api/financial/dues/route.ts
+
 export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import prisma from '@/lib/prismadb';
 import { authOptions } from '@/lib/authConfig';
-export const revalidate = 0;
+import prisma from '@/lib/prismadb';
 
-// Define session type for better TypeScript support
-interface CustomSession {
-  user: {
-    id: string;
-    email: string;
-    userType: string;
-    role?: string;
-  };
-}
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
 
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions) as CustomSession | null;
-    
-    if (!session || !session.user) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // only admins should access
-    const isAdmin = session.user.userType === 'ADMIN' || session.user.role === 'ADMIN';
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 401 });
-    }
-
-    const url = new URL(request.url);
-    const yearParam = url.searchParams.get('year');
-    const year = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear();
-
-    const start = new Date(year, 0, 1);
-    const end = new Date(year, 11, 31, 23, 59, 59);
-
-    const records = await prisma.financialRecord.findMany({
+    // Find member by user ID
+    const account = await prisma.account.findFirst({
       where: {
-        type: 'DUES',
-        transactionDate: {
-          gte: start,
-          lte: end,
-        },
+        userId: session.user.id,
+        userType: 'MEMBER'
       },
       include: {
-        member: {
-          select: {
-            id: true,
-            surname: true,
-            givenName: true,
-          },
-        },
-      },
-      orderBy: { transactionDate: 'asc' },
+        member: true
+      }
     });
 
-    // Group by member
-    const map = new Map<string, any>();
-    for (const r of records) {
-      const member = r.member;
-      const memberId = member?.id || r.memberId || 'unknown';
-      const name = member ? `${member.givenName} ${member.surname}` : 'Unknown';
-
-      if (!map.has(memberId)) {
-        map.set(memberId, { memberId, memberName: name, payments: [] as any[] });
-      }
-
-      map.get(memberId)!.payments.push({
-        id: r.id,
-        amount: r.amount,
-        date: r.transactionDate,
-      });
+    if (!account?.member) {
+      return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    const result = Array.from(map.values());
+    // Fetch financial records (dues) for this member
+    const dues = await prisma.financialRecord.findMany({
+      where: {
+        memberId: account.member.id,
+        type: 'DUES'
+      },
+      orderBy: [{ transactionDate: 'desc' }]
+    });
 
-    return NextResponse.json({ year, results: result });
+    // Format dues data
+    const formattedDues = dues.map(due => {
+      // Extract month and year from transactionDate
+      const date = new Date(due.transactionDate);
+      const month = date.getMonth(); // 0-11
+      const year = date.getFullYear();
+
+      return {
+        id: due.id,
+        month: MONTHS[month] || `Month ${month + 1}`,
+        year: year,
+        amount: due.amount || 0,
+        status: due.status === 'PAID' ? 'PAID' : 'UNPAID',
+        dueDate: due.dueDate,
+        paidDate: due.status === 'PAID' ? due.transactionDate : null,
+        description: due.description
+      };
+    });
+
+    return NextResponse.json(formattedDues);
   } catch (error) {
     console.error('Error fetching dues:', error);
-    return NextResponse.json({ error: 'Failed to fetch dues' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
