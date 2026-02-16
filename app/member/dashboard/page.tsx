@@ -40,6 +40,25 @@ interface MemberProfile {
   email: string;
   memberStatus: string;
   serverLevel: string;
+  phone?: string;
+  address?: string;
+}
+
+interface Due {
+  id: string;
+  month: string;
+  year: number;
+  amount: number;
+  status: 'PAID' | 'UNPAID';
+  dueDate: string;
+  paidDate?: string;
+}
+
+interface Attendance {
+  id: string;
+  type: 'SUNDAY_SERVICE' | 'DAILY_MASS' | 'MONTHLY_MEETING';
+  date: string;
+  status: 'PRESENT' | 'ABSENT';
 }
 
 const MONTHS = [
@@ -64,6 +83,14 @@ export default function MemberDashboard() {
   const [memberProfile, setMemberProfile] = useState<MemberProfile | null>(null);
   const [duties, setDuties] = useState<DutyDay[]>([]);
   const [isLoadingDuties, setIsLoadingDuties] = useState(true);
+  
+  // New state for tabs and additional data
+  const [activeTab, setActiveTab] = useState<'schedule' | 'profile' | 'dues' | 'attendance'>('schedule');
+  const [dues, setDuesData] = useState<Due[]>([]);
+  const [attendance, setAttendanceData] = useState<Attendance[]>([]);
+  const [editMode, setEditMode] = useState(false);
+  const [formData, setFormData] = useState<MemberProfile | null>(null);
+  const [isLoadingAdditionalData, setIsLoadingAdditionalData] = useState(false);
 
   useEffect(() => {
     if (status === "authenticated" && session?.user?.userType === "ADMIN") {
@@ -125,10 +152,8 @@ export default function MemberDashboard() {
     
     const days: CalendarDay[] = [];
     
-    // Create a map of duties by day from database
     const dutyMap = new Map(duties.map(d => [d.day, d.duties]));
     
-    // Previous month days
     for (let i = firstDayOfWeek - 1; i >= 0; i--) {
       days.push({
         day: lastDateOfPrevMonth - i,
@@ -138,7 +163,6 @@ export default function MemberDashboard() {
       });
     }
     
-    // Current month days
     for (let day = 1; day <= lastDateOfMonth; day++) {
       const dayDuties = dutyMap.get(day) || [];
       days.push({
@@ -149,8 +173,7 @@ export default function MemberDashboard() {
       });
     }
     
-    // Next month days to fill the grid
-    const remainingDays = 42 - days.length; // 6 rows * 7 days
+    const remainingDays = 42 - days.length;
     for (let day = 1; day <= remainingDays; day++) {
       days.push({
         day,
@@ -173,6 +196,7 @@ export default function MemberDashboard() {
       if (response.ok) {
         const data = await response.json();
         setMemberProfile(data);
+        setFormData(data);
       }
     } catch (error) {
       console.error('Error fetching member profile:', error);
@@ -208,6 +232,58 @@ export default function MemberDashboard() {
     } catch (error) {
       console.error('Error fetching group:', error);
       setMemberGroup('Not Assigned');
+    }
+  };
+
+  const fetchDuesAndAttendance = async () => {
+    try {
+      setIsLoadingAdditionalData(true);
+      const [duesRes, attendanceRes] = await Promise.all([
+        fetch('/api/financial/dues'),
+        fetch('/api/member/duties')
+      ]);
+
+      if (duesRes.ok) {
+        const duesData = await duesRes.json();
+        setDuesData(Array.isArray(duesData) ? duesData : []);
+      }
+
+      if (attendanceRes.ok) {
+        const attendanceData = await attendanceRes.json();
+        setAttendanceData(Array.isArray(attendanceData) ? attendanceData : []);
+      }
+    } catch (error) {
+      console.error('Error fetching additional data:', error);
+    } finally {
+      setIsLoadingAdditionalData(false);
+    }
+  };
+
+  const handleEditChange = (field: keyof MemberProfile, value: string) => {
+    if (formData) {
+      setFormData({
+        ...formData,
+        [field]: value,
+      });
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const res = await fetch('/api/member/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      if (!res.ok) throw new Error('Failed to update profile');
+
+      const updated = await res.json();
+      setMemberProfile(updated);
+      setEditMode(false);
+      toast.success('Profile updated successfully!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
     }
   };
 
@@ -251,12 +327,6 @@ export default function MemberDashboard() {
       }
     } catch (error) {
       console.error('Error marking notification as read:', error);
-      setNotifications(prev => 
-        prev.map(n => 
-          n.id === notificationId ? { ...n, isRead: true } : n
-        )
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
     }
   };
 
@@ -272,8 +342,6 @@ export default function MemberDashboard() {
       }
     } catch (error) {
       console.error('Error marking all as read:', error);
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setUnreadCount(0);
     }
   };
 
@@ -287,6 +355,13 @@ export default function MemberDashboard() {
     return day === today.getDate() && 
            currentDate.getMonth() === today.getMonth() && 
            currentDate.getFullYear() === today.getFullYear();
+  };
+
+  const handleTabChange = (tab: 'schedule' | 'profile' | 'dues' | 'attendance') => {
+    setActiveTab(tab);
+    if ((tab === 'dues' || tab === 'attendance') && dues.length === 0 && attendance.length === 0) {
+      fetchDuesAndAttendance();
+    }
   };
 
   if (status === "loading") {
@@ -312,7 +387,6 @@ export default function MemberDashboard() {
       {/* Header Section */}
       <div className="px-6 py-6">
         <div className="flex items-start justify-between mb-6">
-          {/* Notification Bell Icon */}
           <button
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative bg-white/20 backdrop-blur-sm p-3 rounded-xl hover:bg-white/30 transition-colors"
@@ -329,7 +403,6 @@ export default function MemberDashboard() {
             </div>
           </button>
 
-          {/* Logo */}
           <div className="relative w-16 h-16">
             <Image
               src="/images/MAS LOGO.png"
@@ -342,7 +415,6 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* Welcome Text */}
         <div className="mb-6">
           <p className="text-white/80 text-sm mb-1">Welcome back!</p>
           <h1 className="text-2xl font-bold text-white">
@@ -351,9 +423,7 @@ export default function MemberDashboard() {
           <p className="text-white/70 text-sm mt-1">Group: {memberGroup}</p>
         </div>
 
-        {/* Search Bar and Action Buttons */}
         <div className="flex items-center gap-3 mb-6">
-          {/* Search Bar */}
           <div className="relative flex-1">
             <input
               type="text"
@@ -377,7 +447,6 @@ export default function MemberDashboard() {
             </svg>
           </div>
 
-          {/* My Group Button */}
           <button
             onClick={() => router.push('/member/group')}
             className="bg-white/20 backdrop-blur-sm p-3 rounded-xl hover:bg-white/30 transition-colors flex-shrink-0"
@@ -387,7 +456,6 @@ export default function MemberDashboard() {
             </svg>
           </button>
 
-          {/* Birthday Button */}
           <button
             onClick={() => router.push('/member/birthdays')}
             className="bg-white/20 backdrop-blur-sm p-3 rounded-xl hover:bg-white/30 transition-colors flex-shrink-0"
@@ -407,148 +475,430 @@ export default function MemberDashboard() {
           marginTop: '20px'
         }}
       >
-        {/* Calendar Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">MY SCHEDULE</h2>
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={handlePrevMonth}
-              className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-              disabled={isLoadingDuties}
-            >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-6-6 6-6" />
-              </svg>
-            </button>
-            <h3 className="text-sm sm:text-lg font-bold text-gray-900 min-w-max sm:min-w-[150px] text-center whitespace-nowrap">
-              {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
-            </h3>
-            <button
-              onClick={handleNextMonth}
-              className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-              disabled={isLoadingDuties}
-            >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Loading State */}
-        {isLoadingDuties && (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          </div>
-        )}
-
-        {/* Calendar */}
-        {!isLoadingDuties && (
-          <div className="bg-white rounded-lg shadow-sm border-2 border-gray-100 overflow-hidden mb-6">
-          {/* Day Headers */}
-          <div className="grid grid-cols-7 bg-gray-50 border-b-2 border-gray-200">
-            {DAYS.map((day) => (
-              <div key={day} className="py-3 text-center text-xs font-bold text-gray-700 uppercase">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          {/* Calendar Grid */}
-          <div className="grid grid-cols-7">
-            {calendarDays.map((calendarDay, index) => (
+        {/* Tabs Navigation */}
+        <div className="border-b border-gray-200 mb-6">
+          <div className="flex space-x-8 overflow-x-auto">
+            {[
+              { id: 'schedule', label: '📅 Schedule', icon: '📅' },
+              { id: 'profile', label: '👤 Profile', icon: '👤' },
+              { id: 'dues', label: '💰 Dues', icon: '💰' },
+              { id: 'attendance', label: '✓ Attendance', icon: '✓' },
+            ].map((tab) => (
               <button
-                key={index}
-                onClick={() => handleDateClick(calendarDay)}
-                disabled={!calendarDay.isCurrentMonth}
-                className={`
-                  aspect-square p-2 border-b border-r border-gray-100 transition-all relative
-                  ${!calendarDay.isCurrentMonth ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'hover:bg-blue-50 cursor-pointer'}
-                  ${selectedDate === calendarDay.day && calendarDay.isCurrentMonth ? 'bg-blue-100 ring-2 ring-blue-500 ring-inset' : ''}
-                  ${isToday(calendarDay.day) && calendarDay.isCurrentMonth ? 'bg-yellow-50' : ''}
-                `}
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id as any)}
+                className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                }`}
               >
-                <div className="flex flex-col items-center justify-center h-full">
-                  <span className={`
-                    text-sm font-semibold mb-1
-                    ${!calendarDay.isCurrentMonth ? 'text-gray-400' : 'text-gray-900'}
-                    ${isToday(calendarDay.day) && calendarDay.isCurrentMonth ? 'text-blue-600' : ''}
-                  `}>
-                    {calendarDay.day}
-                  </span>
-                  {calendarDay.hasDuty && calendarDay.isCurrentMonth && (
-                    <div className="flex flex-col space-y-0.5">
-                      {calendarDay.duties.slice(0, 2).map((_, idx) => (
-                        <div 
-                          key={idx}
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{
-                            background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {isToday(calendarDay.day) && calendarDay.isCurrentMonth && (
-                  <div className="absolute top-1 right-1 w-2 h-2 bg-blue-600 rounded-full"></div>
-                )}
+                {tab.label}
               </button>
             ))}
           </div>
         </div>
+
+        {/* SCHEDULE TAB */}
+        {activeTab === 'schedule' && (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">MY SCHEDULE</h2>
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={handlePrevMonth}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  disabled={isLoadingDuties}
+                >
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-6-6 6-6" />
+                  </svg>
+                </button>
+                <h3 className="text-sm sm:text-lg font-bold text-gray-900 min-w-max sm:min-w-[150px] text-center whitespace-nowrap">
+                  {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
+                </h3>
+                <button
+                  onClick={handleNextMonth}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  disabled={isLoadingDuties}
+                >
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {isLoadingDuties && (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            )}
+
+            {!isLoadingDuties && (
+              <div className="bg-white rounded-lg shadow-sm border-2 border-gray-100 overflow-hidden mb-6">
+                <div className="grid grid-cols-7 bg-gray-50 border-b-2 border-gray-200">
+                  {DAYS.map((day) => (
+                    <div key={day} className="py-3 text-center text-xs font-bold text-gray-700 uppercase">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7">
+                  {calendarDays.map((calendarDay, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleDateClick(calendarDay)}
+                      disabled={!calendarDay.isCurrentMonth}
+                      className={`
+                        aspect-square p-2 border-b border-r border-gray-100 transition-all relative
+                        ${!calendarDay.isCurrentMonth ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'hover:bg-blue-50 cursor-pointer'}
+                        ${selectedDate === calendarDay.day && calendarDay.isCurrentMonth ? 'bg-blue-100 ring-2 ring-blue-500 ring-inset' : ''}
+                        ${isToday(calendarDay.day) && calendarDay.isCurrentMonth ? 'bg-yellow-50' : ''}
+                      `}
+                    >
+                      <div className="flex flex-col items-center justify-center h-full">
+                        <span className={`
+                          text-sm font-semibold mb-1
+                          ${!calendarDay.isCurrentMonth ? 'text-gray-400' : 'text-gray-900'}
+                          ${isToday(calendarDay.day) && calendarDay.isCurrentMonth ? 'text-blue-600' : ''}
+                        `}>
+                          {calendarDay.day}
+                        </span>
+                        {calendarDay.hasDuty && calendarDay.isCurrentMonth && (
+                          <div className="flex flex-col space-y-0.5">
+                            {calendarDay.duties.slice(0, 2).map((_, idx) => (
+                              <div 
+                                key={idx}
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{
+                                  background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {isToday(calendarDay.day) && calendarDay.isCurrentMonth && (
+                        <div className="absolute top-1 right-1 w-2 h-2 bg-blue-600 rounded-full"></div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedDate && !isLoadingDuties && (
+              <div className="bg-white rounded-lg shadow-sm border-2 border-gray-100 p-6 mb-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4">
+                  Duties for {MONTHS[currentDate.getMonth()]} {selectedDate}, {currentDate.getFullYear()}
+                </h3>
+                {getSelectedDayDuties().length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No duties scheduled for this day</p>
+                ) : (
+                  <div className="space-y-2">
+                    {getSelectedDayDuties().map((duty, index) => (
+                      <div 
+                        key={index}
+                        className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg border border-blue-200"
+                      >
+                        <div 
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                          }}
+                        />
+                        <span className="text-sm font-medium text-gray-900">{duty}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isLoadingDuties && (
+              <div className="flex items-center justify-center space-x-6 text-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 bg-yellow-50 border border-yellow-200 rounded"></div>
+                  <span className="text-gray-600">Today</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div 
+                    className="w-4 h-4 rounded-full"
+                    style={{
+                      background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                    }}
+                  />
+                  <span className="text-gray-600">Has Duty</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 bg-blue-100 border-2 border-blue-500 rounded"></div>
+                  <span className="text-gray-600">Selected</span>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Selected Day Details */}
-        {selectedDate && !isLoadingDuties && (
-          <div className="bg-white rounded-lg shadow-sm border-2 border-gray-100 p-6 mb-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
-              Duties for {MONTHS[currentDate.getMonth()]} {selectedDate}, {currentDate.getFullYear()}
-            </h3>
-            {getSelectedDayDuties().length === 0 ? (
-              <p className="text-gray-500 text-center py-4">No duties scheduled for this day</p>
-            ) : (
-              <div className="space-y-2">
-                {getSelectedDayDuties().map((duty, index) => (
-                  <div 
-                    key={index}
-                    className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg border border-blue-200"
-                  >
-                    <div 
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{
-                        background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                      }}
-                    />
-                    <span className="text-sm font-medium text-gray-900">{duty}</span>
+        {/* PROFILE TAB */}
+        {activeTab === 'profile' && (
+          <div>
+            {!editMode ? (
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Full Name</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.fullName || 'N/A'}</p>
                   </div>
-                ))}
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Email</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.email || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Phone</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.phone || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Server Level</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.serverLevel || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Member Status</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.memberStatus || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Group</label>
+                    <p className="text-lg text-gray-900">{memberGroup}</p>
+                  </div>
+                  {memberProfile?.address && (
+                    <div className="md:col-span-2">
+                      <label className="text-sm font-medium text-gray-600">Address</label>
+                      <p className="text-lg text-gray-900">{memberProfile.address}</p>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setEditMode(true)}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Edit Profile
+                </button>
               </div>
+            ) : (
+              <form onSubmit={(e) => { e.preventDefault(); handleSaveProfile(); }}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={formData?.fullName || ''}
+                    onChange={(e) => handleEditChange('fullName', e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={formData?.email || ''}
+                    onChange={(e) => handleEditChange('email', e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Phone"
+                    value={formData?.phone || ''}
+                    onChange={(e) => handleEditChange('phone', e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Address"
+                    value={formData?.address || ''}
+                    onChange={(e) => handleEditChange('address', e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 md:col-span-2"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="submit"
+                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditMode(false);
+                      setFormData(memberProfile);
+                    }}
+                    className="bg-gray-300 text-gray-900 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         )}
 
-        {/* Legend */}
-        {!isLoadingDuties && (
-          <div className="flex items-center justify-center space-x-6 text-sm">
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-yellow-50 border border-yellow-200 rounded"></div>
-            <span className="text-gray-600">Today</span>
+        {/* DUES TAB */}
+        {activeTab === 'dues' && (
+          <div>
+            {isLoadingAdditionalData ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Dues</h3>
+                <div className="overflow-x-auto mb-6">
+                  <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {dues.length > 0 ? (
+                        dues.map((due) => (
+                          <tr key={due.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {due.month} {due.year}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              ₱{due.amount.toFixed(2)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(due.dueDate).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                due.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}>
+                                {due.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {due.paidDate ? new Date(due.paidDate).toLocaleDateString() : '-'}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                            No dues found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {dues.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <p className="text-sm text-gray-600">Total Dues</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        ₱{dues.reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                      <p className="text-sm text-gray-600">Paid</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        ₱{dues.filter(d => d.status === 'PAID').reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                      <p className="text-sm text-gray-600">Unpaid</p>
+                      <p className="text-2xl font-bold text-red-600">
+                        ₱{dues.filter(d => d.status === 'UNPAID').reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-          <div className="flex items-center space-x-2">
-            <div 
-              className="w-4 h-4 rounded-full"
-              style={{
-                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-              }}
-            />
-            <span className="text-gray-600">Has Duty</span>
+        )}
+
+        {/* ATTENDANCE TAB */}
+        {activeTab === 'attendance' && (
+          <div>
+            {isLoadingAdditionalData ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Attendance Record</h3>
+
+                {attendance.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                      <p className="text-sm text-gray-600">Present</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {attendance.filter(a => a.status === 'PRESENT').length}
+                      </p>
+                    </div>
+                    <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                      <p className="text-sm text-gray-600">Absent</p>
+                      <p className="text-2xl font-bold text-red-600">
+                        {attendance.filter(a => a.status === 'ABSENT').length}
+                      </p>
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <p className="text-sm text-gray-600">Attendance Rate</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {attendance.length > 0 ? ((attendance.filter(a => a.status === 'PRESENT').length / attendance.length) * 100).toFixed(1) + '%' : '0%'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {attendance.length > 0 ? (
+                        attendance.map((record) => (
+                          <tr key={record.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {record.type.replace(/_/g, ' ')}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(record.date).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                record.status === 'PRESENT' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}>
+                                {record.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-4 text-center text-gray-500">
+                            No attendance records found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-blue-100 border-2 border-blue-500 rounded"></div>
-            <span className="text-gray-600">Selected</span>
-          </div>
-        </div>
         )}
       </div>
 
