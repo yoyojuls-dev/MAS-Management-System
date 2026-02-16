@@ -536,10 +536,10 @@ export default function Home() {
           <Container>
             <div className="text-center max-w-3xl mx-auto">
               <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Ready to Manage Your Ministry?
+                Ready to Access It?
               </h2>
               <p className="text-xl text-blue-100 mb-12">
-                Choose your login type to access the altar server ministry management system.
+                Choose your login type to access the Altar Server Ministry Management System.
               </p>
               
               {/* Login Options */}
@@ -556,7 +556,7 @@ export default function Home() {
                       </svg>
                     </div>
                     <h3 className="text-xl font-bold mb-2">Member Login</h3>
-                    <p className="text-sm text-blue-500">Access your altar server account</p>
+                    <p className="text-sm text-blue-500">Access Altar Server Account</p>
                   </div>
                 </Link>
 
@@ -572,7 +572,7 @@ export default function Home() {
                       </svg>
                     </div>
                     <h3 className="text-xl font-bold mb-2">Administrator</h3>
-                    <p className="text-sm group-hover:text-blue-500 transition-colors">Ministry management access</p>
+                    <p className="text-sm group-hover:text-blue-500 transition-colors">Ministry Management Access</p>
                   </div>
                 </Link>
               </div>
