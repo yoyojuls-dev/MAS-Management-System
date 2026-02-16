@@ -22,7 +22,7 @@ interface MemberProfile {
   birthdate?: Date | string;
   memberStatus: string;
   serverLevel: string;
-  dateJoined: Date | string;  // ← This was missing!
+  dateJoined: Date | string;
   image?: string;
   address?: string;
   parentGuardian?: string;
@@ -58,18 +58,6 @@ interface CalendarDay {
   duties: string[];
 }
 
-// interface MemberProfile {
-//   id: string;
-//   fullName: string;
-//   surname: string;
-//   givenName: string;
-//   email: string;
-//   memberStatus: string;
-//   serverLevel: string;
-//   phone?: string;
-//   address?: string;
-// }
-
 interface Due {
   id: string;
   month: string;
@@ -82,9 +70,9 @@ interface Due {
 
 interface Attendance {
   id: string;
-  type: 'SUNDAY_SERVICE' | 'DAILY_MASS' | 'MONTHLY_MEETING';
+  type: string;
   date: string;
-  status: 'PRESENT' | 'ABSENT';
+  status: string;
 }
 
 const MONTHS = [
@@ -97,6 +85,8 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export default function MemberDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  
+  // ===== STATE =====
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -109,20 +99,17 @@ export default function MemberDashboard() {
   const [memberProfile, setMemberProfile] = useState<MemberProfile | null>(null);
   const [duties, setDuties] = useState<DutyDay[]>([]);
   const [isLoadingDuties, setIsLoadingDuties] = useState(true);
-  
-  // New state for tabs and additional data
   const [activeTab, setActiveTab] = useState<'schedule' | 'profile' | 'dues' | 'attendance'>('schedule');
-  const [dues, setDuesData] = useState<Due[]>([]);
-  const [attendance, setAttendanceData] = useState<Attendance[]>([]);
+  const [duesData, setDuesData] = useState<Due[]>([]);
+  const [attendanceData, setAttendanceData] = useState<Attendance[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<MemberProfile | null>(null);
   const [isLoadingAdditionalData, setIsLoadingAdditionalData] = useState(false);
-
   const [passwordData, setPasswordData] = useState<PasswordData>({
-  currentPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-});
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
 
   useEffect(() => {
     if (status === "authenticated" && session?.user?.userType === "ADMIN") {
@@ -272,7 +259,7 @@ export default function MemberDashboard() {
       setIsLoadingAdditionalData(true);
       const [duesRes, attendanceRes] = await Promise.all([
         fetch('/api/financial/dues'),
-        fetch('/api/member/duties')
+        fetch('/api/member/attendance')
       ]);
 
       if (duesRes.ok) {
@@ -292,28 +279,67 @@ export default function MemberDashboard() {
   };
 
   const handleEditChange = (field: keyof MemberProfile, value: string) => {
-  if (formData) {
-    setFormData({
-      ...formData,
-      [field]: value,
-    });
-  }
-};
+    if (formData) {
+      setFormData({
+        ...formData,
+        [field]: value,
+      });
+    }
+  };
 
   const handleSaveProfile = async () => {
     try {
+      // Validate password fields if attempting to change password
+      if (passwordData.newPassword || passwordData.currentPassword || passwordData.confirmPassword) {
+        if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+          toast.error('All password fields are required if changing password');
+          return;
+        }
+        
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+          toast.error('New passwords do not match');
+          return;
+        }
+        
+        if (passwordData.newPassword.length < 8) {
+          toast.error('Password must be at least 8 characters long');
+          return;
+        }
+      }
+
       const res = await fetch('/api/member/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          surname: formData?.surname,
+          givenName: formData?.givenName,
+          email: formData?.email,
+          phone: formData?.phone,
+          address: formData?.address,
+          parentGuardian: formData?.parentGuardian,
+          emergencyContact: formData?.emergencyContact,
+          emergencyNumber: formData?.emergencyNumber,
+          school: formData?.school,
+          occupation: formData?.occupation,
+          currentPassword: passwordData.currentPassword || undefined,
+          newPassword: passwordData.newPassword || undefined,
+          confirmPassword: passwordData.confirmPassword || undefined
+        }),
       });
 
-      if (!res.ok) throw new Error('Failed to update profile');
+      const data = await res.json();
 
-      const updated = await res.json();
-      setMemberProfile(updated);
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update profile');
+        return;
+      }
+
+      const updatedData = data.data || data;
+      setMemberProfile(updatedData);
+      setFormData(updatedData);
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setEditMode(false);
-      toast.success('Profile updated successfully!');
+      toast.success(data.message || 'Profile updated successfully!');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update profile');
     }
@@ -391,7 +417,7 @@ export default function MemberDashboard() {
 
   const handleTabChange = (tab: 'schedule' | 'profile' | 'dues' | 'attendance') => {
     setActiveTab(tab);
-    if ((tab === 'dues' || tab === 'attendance') && dues.length === 0 && attendance.length === 0) {
+    if ((tab === 'dues' || tab === 'attendance') && duesData.length === 0 && attendanceData.length === 0) {
       fetchDuesAndAttendance();
     }
   };
@@ -673,147 +699,145 @@ export default function MemberDashboard() {
           </>
         )}
 
-        {/* // Add this to your member dashboard page.tsx in the PROFILE TAB section
-// Replace the existing profile tab code with this */}
-
-      {activeTab === 'profile' && (
-        <div>
-          {!editMode ? (
-            <div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Full Name</label>
-                  <p className="text-lg text-gray-900">{memberProfile?.fullName || 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Email</label>
-                  <p className="text-lg text-gray-900">{memberProfile?.email || 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Phone</label>
-                  <p className="text-lg text-gray-900">{memberProfile?.phone || 'Not provided'}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Server Level</label>
-                  <p className="text-lg text-gray-900">{memberProfile?.serverLevel || 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Member Status</label>
-                  <p className="text-lg text-gray-900">{memberProfile?.memberStatus || 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Date Joined</label>
-                  <p className="text-lg text-gray-900">
-                    {memberProfile?.dateJoined 
-                      ? new Date(memberProfile.dateJoined).toLocaleDateString() 
-                      : 'N/A'}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setEditMode(true)}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Edit Profile
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={(e) => { e.preventDefault(); handleSaveProfile(); }}>
-              <div className="space-y-6">
-                {/* Profile Information Section */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <input
-                      type="text"
-                      placeholder="Full Name"
-                      value={formData?.fullName || ''}
-                      onChange={(e) => handleEditChange('fullName', e.target.value)}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="email"
-                      placeholder="Email"
-                      value={formData?.email || ''}
-                      onChange={(e) => handleEditChange('email', e.target.value)}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="tel"
-                      placeholder="Phone"
-                      value={formData?.phone || ''}
-                      onChange={(e) => handleEditChange('phone', e.target.value)}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+        {/* PROFILE TAB */}
+        {activeTab === 'profile' && (
+          <div>
+            {!editMode ? (
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Full Name</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.fullName || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Email</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.email || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Phone</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.phone || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Server Level</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.serverLevel || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Member Status</label>
+                    <p className="text-lg text-gray-900">{memberProfile?.memberStatus || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Date Joined</label>
+                    <p className="text-lg text-gray-900">
+                      {memberProfile?.dateJoined 
+                        ? new Date(memberProfile.dateJoined).toLocaleDateString() 
+                        : 'N/A'}
+                    </p>
                   </div>
                 </div>
-
-                {/* Password Change Section */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Change Password (Optional)</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <input
-                      type="password"
-                      placeholder="Current Password"
-                      value={passwordData?.currentPassword || ''}
-                      onChange={(e) => setPasswordData({
-                        ...passwordData,
-                        currentPassword: e.target.value
-                      })}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <div></div>
-                    <input
-                      type="password"
-                      placeholder="New Password"
-                      value={passwordData?.newPassword || ''}
-                      onChange={(e) => setPasswordData({
-                        ...passwordData,
-                        newPassword: e.target.value
-                      })}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="password"
-                      placeholder="Confirm New Password"
-                      value={passwordData?.confirmPassword || ''}
-                      onChange={(e) => setPasswordData({
-                        ...passwordData,
-                        confirmPassword: e.target.value
-                      })}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Leave blank if you don't want to change your password. Password must be at least 8 characters.
-                  </p>
-                </div>
-
-                {/* Buttons */}
-                <div className="flex gap-3 border-t pt-6">
-                  <button
-                    type="submit"
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Save Changes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditMode(false);
-                      setFormData(memberProfile);
-                      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                    }}
-                    className="bg-gray-300 text-gray-900 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                <button
+                  onClick={() => setEditMode(true)}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Edit Profile
+                </button>
               </div>
-            </form>
-          )}
-        </div>
-      )}
+            ) : (
+              <form onSubmit={(e) => { e.preventDefault(); handleSaveProfile(); }}>
+                <div className="space-y-6">
+                  {/* Profile Information Section */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <input
+                        type="text"
+                        placeholder="Full Name"
+                        value={formData?.fullName || ''}
+                        onChange={(e) => handleEditChange('fullName', e.target.value)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="email"
+                        placeholder="Email"
+                        value={formData?.email || ''}
+                        onChange={(e) => handleEditChange('email', e.target.value)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="tel"
+                        placeholder="Phone"
+                        value={formData?.phone || ''}
+                        onChange={(e) => handleEditChange('phone', e.target.value)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password Change Section */}
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Change Password (Optional)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <input
+                        type="password"
+                        placeholder="Current Password"
+                        value={passwordData.currentPassword}
+                        onChange={(e) => setPasswordData({
+                          ...passwordData,
+                          currentPassword: e.target.value
+                        })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div></div>
+                      <input
+                        type="password"
+                        placeholder="New Password"
+                        value={passwordData.newPassword}
+                        onChange={(e) => setPasswordData({
+                          ...passwordData,
+                          newPassword: e.target.value
+                        })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="password"
+                        placeholder="Confirm New Password"
+                        value={passwordData.confirmPassword}
+                        onChange={(e) => setPasswordData({
+                          ...passwordData,
+                          confirmPassword: e.target.value
+                        })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Leave blank if you don't want to change your password. Password must be at least 8 characters.
+                    </p>
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="flex gap-3 border-t pt-6">
+                    <button
+                      type="submit"
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Save Changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditMode(false);
+                        setFormData(memberProfile);
+                        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                      }}
+                      className="bg-gray-300 text-gray-900 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
 
         {/* DUES TAB */}
         {activeTab === 'dues' && (
@@ -837,8 +861,8 @@ export default function MemberDashboard() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {dues.length > 0 ? (
-                        dues.map((due) => (
+                      {duesData.length > 0 ? (
+                        duesData.map((due) => (
                           <tr key={due.id}>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {due.month} {due.year}
@@ -872,24 +896,24 @@ export default function MemberDashboard() {
                   </table>
                 </div>
 
-                {dues.length > 0 && (
+                {duesData.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                       <p className="text-sm text-gray-600">Total Dues</p>
                       <p className="text-2xl font-bold text-blue-600">
-                        ₱{dues.reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
+                        ₱{duesData.reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
                       </p>
                     </div>
                     <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                       <p className="text-sm text-gray-600">Paid</p>
                       <p className="text-2xl font-bold text-green-600">
-                        ₱{dues.filter(d => d.status === 'PAID').reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
+                        ₱{duesData.filter(d => d.status === 'PAID').reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
                       </p>
                     </div>
                     <div className="bg-red-50 p-4 rounded-lg border border-red-200">
                       <p className="text-sm text-gray-600">Unpaid</p>
                       <p className="text-2xl font-bold text-red-600">
-                        ₱{dues.filter(d => d.status === 'UNPAID').reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
+                        ₱{duesData.filter(d => d.status === 'UNPAID').reduce((sum, d) => sum + d.amount, 0).toFixed(2)}
                       </p>
                     </div>
                   </div>
@@ -910,24 +934,24 @@ export default function MemberDashboard() {
               <>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Attendance Record</h3>
 
-                {attendance.length > 0 && (
+                {attendanceData.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                       <p className="text-sm text-gray-600">Present</p>
                       <p className="text-2xl font-bold text-green-600">
-                        {attendance.filter(a => a.status === 'PRESENT').length}
+                        {attendanceData.filter(a => a.status === 'PRESENT').length}
                       </p>
                     </div>
                     <div className="bg-red-50 p-4 rounded-lg border border-red-200">
                       <p className="text-sm text-gray-600">Absent</p>
                       <p className="text-2xl font-bold text-red-600">
-                        {attendance.filter(a => a.status === 'ABSENT').length}
+                        {attendanceData.filter(a => a.status === 'ABSENT').length}
                       </p>
                     </div>
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                       <p className="text-sm text-gray-600">Attendance Rate</p>
                       <p className="text-2xl font-bold text-blue-600">
-                        {attendance.length > 0 ? ((attendance.filter(a => a.status === 'PRESENT').length / attendance.length) * 100).toFixed(1) + '%' : '0%'}
+                        {attendanceData.length > 0 ? ((attendanceData.filter(a => a.status === 'PRESENT').length / attendanceData.length) * 100).toFixed(1) + '%' : '0%'}
                       </p>
                     </div>
                   </div>
@@ -943,8 +967,8 @@ export default function MemberDashboard() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {attendance.length > 0 ? (
-                        attendance.map((record) => (
+                      {attendanceData.length > 0 ? (
+                        attendanceData.map((record) => (
                           <tr key={record.id}>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {record.type.replace(/_/g, ' ')}
