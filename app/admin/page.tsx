@@ -1,5 +1,6 @@
 // app/admin/page.tsx - Updated to match gradient blue design
 "use client";
+export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession, signOut } from "next-auth/react";
