@@ -1,8 +1,10 @@
-// app/api/member/profile/route.ts
+// app/api/member/profile/route.ts - FIXED VERSION
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
@@ -38,31 +40,35 @@ export async function GET() {
     });
 
     if (!member) {
+      console.error('Member not found for email:', session.user.email);
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
     // Format the full name
     const fullName = `${member.givenName} ${member.surname}`;
 
-    return NextResponse.json({
+    const responseData = {
       id: member.id,
-      fullName,
+      fullName: fullName,
       surname: member.surname,
       givenName: member.givenName,
       email: member.email,
-      phone: member.contactNumber,
+      phone: member.contactNumber || '',
       birthdate: member.birthdate,
       memberStatus: member.memberStatus,
       serverLevel: member.serverLevel,
       dateJoined: member.dateJoined,
       image: member.image,
-      address: member.address,
-      parentGuardian: member.parentGuardian,
-      emergencyContact: member.emergencyContact,
-      emergencyNumber: member.emergencyNumber,
-      school: member.school,
-      occupation: member.occupation,
-    });
+      address: member.address || '',
+      parentGuardian: member.parentGuardian || '',
+      emergencyContact: member.emergencyContact || '',
+      emergencyNumber: member.emergencyNumber || '',
+      school: member.school || '',
+      occupation: member.occupation || '',
+    };
+
+    console.log('Member profile fetched successfully:', responseData);
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error('Error fetching member profile:', error);
     return NextResponse.json(
@@ -201,18 +207,18 @@ export async function PUT(request: Request) {
           surname: updatedMember.surname,
           givenName: updatedMember.givenName,
           email: updatedMember.email,
-          phone: updatedMember.contactNumber,
+          phone: updatedMember.contactNumber || '',
           birthdate: updatedMember.birthdate,
           memberStatus: updatedMember.memberStatus,
           serverLevel: updatedMember.serverLevel,
           dateJoined: updatedMember.dateJoined,
           image: updatedMember.image,
-          address: updatedMember.address,
-          parentGuardian: updatedMember.parentGuardian,
-          emergencyContact: updatedMember.emergencyContact,
-          emergencyNumber: updatedMember.emergencyNumber,
-          school: updatedMember.school,
-          occupation: updatedMember.occupation,
+          address: updatedMember.address || '',
+          parentGuardian: updatedMember.parentGuardian || '',
+          emergencyContact: updatedMember.emergencyContact || '',
+          emergencyNumber: updatedMember.emergencyNumber || '',
+          school: updatedMember.school || '',
+          occupation: updatedMember.occupation || '',
         },
       });
     }
@@ -263,18 +269,18 @@ export async function PUT(request: Request) {
         surname: updatedMember.surname,
         givenName: updatedMember.givenName,
         email: updatedMember.email,
-        phone: updatedMember.contactNumber,
+        phone: updatedMember.contactNumber || '',
         birthdate: updatedMember.birthdate,
         memberStatus: updatedMember.memberStatus,
         serverLevel: updatedMember.serverLevel,
         dateJoined: updatedMember.dateJoined,
         image: updatedMember.image,
-        address: updatedMember.address,
-        parentGuardian: updatedMember.parentGuardian,
-        emergencyContact: updatedMember.emergencyContact,
-        emergencyNumber: updatedMember.emergencyNumber,
-        school: updatedMember.school,
-        occupation: updatedMember.occupation,
+        address: updatedMember.address || '',
+        parentGuardian: updatedMember.parentGuardian || '',
+        emergencyContact: updatedMember.emergencyContact || '',
+        emergencyNumber: updatedMember.emergencyNumber || '',
+        school: updatedMember.school || '',
+        occupation: updatedMember.occupation || '',
       },
     });
   } catch (error) {

@@ -6,17 +6,21 @@ import { Toaster } from "react-hot-toast";
 import getCurrentUser from "@/actions/getCurrentUser";
 import SessionProvider from "@/providers/SessionProvider";
 
-
+// Define fonts at the module level (outside the component)
 const poppins = Poppins({
   subsets: ['latin'],
   weight: ['400', '700'],
-  variable: '--font-poppins'
+  variable: '--font-poppins',
+  display: 'swap', // Improves performance
+  preload: true, // Ensures font is preloaded
 });
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
-  variable: '--font-playfair'
+  variable: '--font-playfair',
+  display: 'swap', // Improves performance
+  preload: true, // Ensures font is preloaded
 });
 
 export const metadata: Metadata = {
@@ -35,10 +39,16 @@ export default async function RootLayout({
   const currentUser = await getCurrentUser();
 
   return (
-    <html lang="en" className={`${poppins.variable} ${playfair.variable}`}>
+    <html 
+      lang="en" 
+      className={`${poppins.variable} ${playfair.variable}`}
+      suppressHydrationWarning
+    >
       <head>
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
-        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <link 
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+          rel="stylesheet" 
+        />
       </head>
       
       <body className={`${poppins.className} text-slate-700`}>

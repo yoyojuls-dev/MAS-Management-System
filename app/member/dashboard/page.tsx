@@ -809,7 +809,7 @@ export default function MemberDashboard() {
                       />
                     </div>
                     <p className="text-sm text-gray-500 mt-2">
-                      Leave blank if you don't want to change your password. Password must be at least 8 characters.
+                      Leave blank if you don&apos;t want to change your password. Password must be at least 8 characters.
                     </p>
                   </div>
 
