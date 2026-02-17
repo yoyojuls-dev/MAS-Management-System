@@ -1,4 +1,4 @@
-// app/api/member/profile/route.ts - FIXED VERSION
+// app/api/member/profile/route.ts - SIMPLIFIED & DEBUGGED
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
@@ -6,41 +6,31 @@ import bcrypt from 'bcrypt';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    console.log('[PROFILE] GET request started');
+
     const session = await getServerSession();
+    console.log('[PROFILE] Session:', session);
     
-    if (!session || !session.user) {
+    if (!session?.user?.email) {
+      console.log('[PROFILE] No session or email found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    console.log('[PROFILE] Fetching member for email:', session.user.email);
 
     // Find the member by email
     const member = await prisma.member.findFirst({
       where: {
         email: session.user.email,
       },
-      select: {
-        id: true,
-        surname: true,
-        givenName: true,
-        email: true,
-        contactNumber: true,
-        birthdate: true,
-        memberStatus: true,
-        serverLevel: true,
-        dateJoined: true,
-        image: true,
-        address: true,
-        parentGuardian: true,
-        emergencyContact: true,
-        emergencyNumber: true,
-        school: true,
-        occupation: true,
-      },
     });
 
+    console.log('[PROFILE] Member found:', member?.id);
+
     if (!member) {
-      console.error('Member not found for email:', session.user.email);
+      console.log('[PROFILE] Member not found for email:', session.user.email);
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
@@ -58,7 +48,7 @@ export async function GET() {
       memberStatus: member.memberStatus,
       serverLevel: member.serverLevel,
       dateJoined: member.dateJoined,
-      image: member.image,
+      image: member.image || null,
       address: member.address || '',
       parentGuardian: member.parentGuardian || '',
       emergencyContact: member.emergencyContact || '',
@@ -67,12 +57,13 @@ export async function GET() {
       occupation: member.occupation || '',
     };
 
-    console.log('Member profile fetched successfully:', responseData);
+    console.log('[PROFILE] Returning profile data for:', fullName);
     return NextResponse.json(responseData);
   } catch (error) {
-    console.error('Error fetching member profile:', error);
+    console.error('[PROFILE] Error in GET:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to fetch profile' },
+      { error: 'Failed to fetch profile', details: errorMessage },
       { status: 500 }
     );
   }
@@ -80,13 +71,19 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
+    console.log('[PROFILE] PUT request started');
+
     const session = await getServerSession();
+    console.log('[PROFILE] Session for PUT:', session?.user?.email);
     
-    if (!session || !session.user) {
+    if (!session?.user?.email) {
+      console.log('[PROFILE] No session for PUT');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await request.json();
+    console.log('[PROFILE] Request body keys:', Object.keys(body));
+
     const { 
       surname, 
       givenName, 
@@ -111,11 +108,14 @@ export async function PUT(request: Request) {
     });
 
     if (!member) {
+      console.log('[PROFILE] Member not found for PUT');
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
     // If password change is requested
     if (currentPassword || newPassword || confirmPassword) {
+      console.log('[PROFILE] Password change requested');
+
       // Validate all password fields are provided
       if (!currentPassword || !newPassword || !confirmPassword) {
         return NextResponse.json(
@@ -176,24 +176,6 @@ export async function PUT(request: Request) {
           school: school || member.school,
           occupation: occupation || member.occupation,
         },
-        select: {
-          id: true,
-          surname: true,
-          givenName: true,
-          email: true,
-          contactNumber: true,
-          birthdate: true,
-          memberStatus: true,
-          serverLevel: true,
-          dateJoined: true,
-          image: true,
-          address: true,
-          parentGuardian: true,
-          emergencyContact: true,
-          emergencyNumber: true,
-          school: true,
-          occupation: true,
-        },
       });
 
       const fullName = `${updatedMember.givenName} ${updatedMember.surname}`;
@@ -212,7 +194,7 @@ export async function PUT(request: Request) {
           memberStatus: updatedMember.memberStatus,
           serverLevel: updatedMember.serverLevel,
           dateJoined: updatedMember.dateJoined,
-          image: updatedMember.image,
+          image: updatedMember.image || null,
           address: updatedMember.address || '',
           parentGuardian: updatedMember.parentGuardian || '',
           emergencyContact: updatedMember.emergencyContact || '',
@@ -224,6 +206,8 @@ export async function PUT(request: Request) {
     }
 
     // Update only profile info (no password change)
+    console.log('[PROFILE] Updating profile info without password');
+
     const updatedMember = await prisma.member.update({
       where: { id: member.id },
       data: {
@@ -237,24 +221,6 @@ export async function PUT(request: Request) {
         emergencyNumber: emergencyNumber || member.emergencyNumber,
         school: school || member.school,
         occupation: occupation || member.occupation,
-      },
-      select: {
-        id: true,
-        surname: true,
-        givenName: true,
-        email: true,
-        contactNumber: true,
-        birthdate: true,
-        memberStatus: true,
-        serverLevel: true,
-        dateJoined: true,
-        image: true,
-        address: true,
-        parentGuardian: true,
-        emergencyContact: true,
-        emergencyNumber: true,
-        school: true,
-        occupation: true,
       },
     });
 
@@ -274,7 +240,7 @@ export async function PUT(request: Request) {
         memberStatus: updatedMember.memberStatus,
         serverLevel: updatedMember.serverLevel,
         dateJoined: updatedMember.dateJoined,
-        image: updatedMember.image,
+        image: updatedMember.image || null,
         address: updatedMember.address || '',
         parentGuardian: updatedMember.parentGuardian || '',
         emergencyContact: updatedMember.emergencyContact || '',
@@ -284,9 +250,10 @@ export async function PUT(request: Request) {
       },
     });
   } catch (error) {
-    console.error('Error updating member profile:', error);
+    console.error('[PROFILE] Error in PUT:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to update profile' },
+      { error: 'Failed to update profile', details: errorMessage },
       { status: 500 }
     );
   }
