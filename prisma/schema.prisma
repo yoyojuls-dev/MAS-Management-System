@@ -41,6 +41,22 @@ model AdminUser {
   financialRecords      FinancialRecord[] @relation("RecordedByAdmin")
 }
 
+// SMS Logging Model - CORRECTED FOR MONGODB
+model SMSLog {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  memberId      String   @db.ObjectId
+  member        Member   @relation("MemberSMSLogs", fields: [memberId], references: [id], onDelete: Cascade)
+  phoneNumber   String
+  message       String
+  status        String   @default("SENT")
+  type          String   @default("SCHEDULE")
+  scheduledDate DateTime?
+  sentAt        DateTime @default(now())
+  
+  @@index([memberId])
+  @@index([sentAt])
+}
+
 // Ministry Events (Retreats, Training, etc.)
 model MinistryEvent {
   id String @id @default(auto()) @map("_id") @db.ObjectId
@@ -74,8 +90,8 @@ model Member {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
   
   // Name fields
-  surname       String   // Last name (e.g., "Dela Cruz")
-  givenName     String   // First/given names (e.g., "Juan" or "Maria Clara")
+  surname       String
+  givenName     String
   
   birthdate     DateTime
   email         String?  @unique
@@ -89,8 +105,7 @@ model Member {
   // Member-specific fields
   contactNumber String?
   address       String?
-  parentGuardian String?
-  parentContact  String?
+  parentContact String?      // Use this ONE field
   emergencyContact String?
   emergencyNumber String?
   
@@ -111,14 +126,27 @@ model Member {
   financialRecords    FinancialRecord[]   @relation("MemberFinances")
   eventParticipation  EventParticipant[]  @relation("MemberParticipation")
   officers            Officer[]           @relation("MemberOfficer")
+  smsLogs             SMSLog[]            @relation("MemberSMSLogs")
   createdBy           AdminUser           @relation("CreatedByAdmin", fields: [createdByUserId], references: [id])
   createdByUserId     String              @db.ObjectId
   
-  // Indexes (non-unique fields only)
   @@index([memberStatus])
   @@index([birthdate])
   @@index([dateJoined])
   @@index([surname])
+}
+
+
+model ScheduledEmail {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  subject     String
+  message     String
+  memberIds   String[]
+  scheduledFor DateTime
+  status      String   @default("PENDING") // PENDING, SENT, FAILED
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // Account model for authentication

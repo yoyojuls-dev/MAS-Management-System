@@ -13,14 +13,14 @@ export async function GET(
       where: { id },
       select: {
         id: true,
-        // Only using fields that actually exist in your member table
         surname: true,
         givenName: true,
         memberStatus: true,
         email: true,
-        contactNumber: true,
-        birthdate: true,  // Changed from birthday to birthdate
+        parentContact: true,
+        birthdate: true,
         address: true,
+        dateJoined: true,
       }
     });
 
@@ -50,15 +50,15 @@ export async function PUT(
     const { id } = params;
     const body = await request.json();
     
-    // Extract only the fields that exist in your member table
     const {
       surname,
       givenName,
       memberStatus,
       email,
-      contactNumber,
-      birthdate,  // Changed from birthday to birthdate
+      parentContact,
+      birthdate,
       address,
+      dateJoined,
     } = body;
 
     const updatedMember = await prisma.member.update({
@@ -68,9 +68,11 @@ export async function PUT(
         ...(givenName && { givenName }),
         ...(memberStatus && { memberStatus }),
         ...(email && { email }),
-        ...(contactNumber && { contactNumber }),
+        ...(parentContact && { parentContact }),
         ...(birthdate && { birthdate: new Date(birthdate) }),
         ...(address && { address }),
+        ...(dateJoined && { dateJoined: new Date(dateJoined) }),
+        updatedAt: new Date(),
       },
       select: {
         id: true,
@@ -78,17 +80,22 @@ export async function PUT(
         givenName: true,
         memberStatus: true,
         email: true,
-        contactNumber: true,
-        birthdate: true,  // Changed from birthday to birthdate
+        parentContact: true,
+        birthdate: true,
         address: true,
+        dateJoined: true,
       }
     });
 
-    return NextResponse.json(updatedMember);
+    return NextResponse.json({
+      success: true,
+      message: 'Member updated successfully',
+      member: updatedMember
+    });
   } catch (error) {
     console.error('Error updating member:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }
@@ -102,7 +109,6 @@ export async function DELETE(
   try {
     const { id } = params;
 
-    // Check if member exists
     const member = await prisma.member.findUnique({
       where: { id }
     });
@@ -114,7 +120,6 @@ export async function DELETE(
       );
     }
 
-    // Instead of deleting, you might want to update status to INACTIVE
     const updatedMember = await prisma.member.update({
       where: { id },
       data: {

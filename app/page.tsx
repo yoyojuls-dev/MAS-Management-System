@@ -335,7 +335,7 @@ export default function Home() {
               
               {/* Subtitle */}
               <p className="text-xl md:text-2xl text-blue-100 mb-10 max-w-2xl mx-auto drop-shadow-md">
-                Serving at the Altar of the Lord
+                "I have come not to be served, but to serve." <i>-Matthew 20:28</i>
               </p>
               
               {/* Description */}

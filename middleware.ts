@@ -3,12 +3,18 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // ✅ ALLOW SMS API ENDPOINTS WITHOUT AUTHENTICATION
+  if (pathname.startsWith('/api/sms/')) {
+    console.log("✅ SMS API endpoint - bypassing auth");
+    return NextResponse.next();
+  }
+
   const token = await getToken({ 
     req: request, 
     secret: process.env.NEXTAUTH_SECRET 
   });
-
-  const { pathname } = request.nextUrl;
 
   // DEBUG: Log every request
   console.log("🔍 Middleware - Path:", pathname);

@@ -1,243 +1,619 @@
-// app/admin/page.tsx - Updated to match gradient blue design
-"use client";
+// app/admin/members/page.tsx - Complete Fixed Version
+'use client';
+
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 
-interface Notification {
+interface Member {
   id: string;
-  message: string;
-  type: 'update' | 'change' | 'reminder';
-  timestamp: Date;
-  isRead: boolean;
+  surname: string;
+  givenName: string;
+  email: string;
+  birthdate: string;
+  age: number;
+  address: string;
+  parentContact: string;
+  dateJoined: string;
+  yearsOfService: number;
+  serviceLevel: 'Neophyte' | 'Junior' | 'Senior Server';
+  memberStatus: string;
+  createdAt: string;
 }
 
-interface Event {
+interface Officer {
   id: string;
-  title: string;
-  date: string;
-  time: string;
-  conductor: string;
-  purpose: string;
-  year: number;
+  memberId: string;
+  memberName: string;
+  position: string;
+  email: string;
+  contactNumber: string;
+  dateAppointed: string;
+  isActive: boolean;
 }
 
-export default function AdminDashboard() {
-  const { data: session, status } = useSession();
+interface Admin {
+  id: string;
+  adminId: string;
+  name: string;
+  email: string;
+  position: string;
+  contactNumber: string;
+  createdAt: string;
+}
+
+interface RemoveConfirmation {
+  isOpen: boolean;
+  member: Member | null;
+}
+
+// Helper function to format name as "Surname, I."
+const formatMemberName = (surname: string, givenName: string) => {
+  const initials = givenName
+    .split(' ')
+    .map(name => name.charAt(0).toUpperCase())
+    .join('.');
+  return `${surname}, ${initials}.`;
+};
+
+// Helper function to get full name
+const getFullName = (surname: string, givenName: string) => {
+  return `${givenName} ${surname}`;
+};
+
+type TabType = 'members' | 'officers' | 'admins';
+
+const OFFICER_POSITIONS = [
+  'President',
+  'Vice President', 
+  'Secretary',
+  'Assistant Secretary',
+  'Treasurer',
+  'Assistant Treasurer',
+  'Auditor',
+  'Worship Committee',
+  'Social Action Committee',
+  'Social Media Committee',
+  'Formation Committee',
+  'Morning Cluster Head',
+  'Afternoon Cluster Head',
+  'Leader'
+];
+
+export default function UserManagement() {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('members');
+  const [members, setMembers] = useState<Member[]>([]);
+  const [officers, setOfficers] = useState<Officer[]>([]);
+  const [admins, setAdmins] = useState<Admin[]>([]);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [showAddMemberForm, setShowAddMemberForm] = useState(false);
+  const [showAddOfficerForm, setShowAddOfficerForm] = useState(false);
+  const [removeConfirmation, setRemoveConfirmation] = useState<RemoveConfirmation>({
+    isOpen: false,
+    member: null
+  });
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [memberFormData, setMemberFormData] = useState({
+    surname: "",
+    givenName: "",
+    birthday: "",
+    address: "",
+    parentContact: "",
+    dateOfInvestiture: "",
+    username: "",
+    password: "",
+    confirmPassword: "",
+    email: "",
+  });
+  const [officerFormData, setOfficerFormData] = useState({
+    memberId: "",
+    position: "",
+    dateAppointed: new Date().toISOString().split('T')[0],
+  });
 
-  const fetchNotifications = useCallback(async () => {
+  const loadMembers = useCallback(async () => {
     try {
-      // Fetch notifications from API
-      const response = await fetch('/api/notifications');
-      if (response.ok) {
-        const data = await response.json();
-        const formattedNotifications = data.map((notif: any) => ({
-          ...notif,
-          timestamp: new Date(notif.timestamp)
-        }));
-        setNotifications(formattedNotifications);
-        setUnreadCount(formattedNotifications.filter((n: Notification) => !n.isRead).length);
-      } else {
-        // Fallback to sample data if API fails
-        loadSampleNotifications();
+      console.log("Loading members from API...");
+      const response = await fetch("/api/members?status=ACTIVE");
+      
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
       }
+      
+      const data = await response.json();
+      console.log("Members loaded:", data);
+      
+      const membersWithCalculatedFields = data.map((member: any) => {
+        const age = member.birthdate ? calculateAge(member.birthdate) : 0;
+        const yearsOfService = member.dateJoined ? calculateYearsOfService(member.dateJoined) : 0;
+        
+        return {
+          ...member,
+          age,
+          yearsOfService,
+          serviceLevel: member.serverLevel || determineServiceLevel(yearsOfService)
+        };
+      });
+      
+      setMembers(membersWithCalculatedFields);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
-      loadSampleNotifications();
+      console.error("Error loading members:", error);
+      toast.error("Failed to load members from database");
+      setMembers([]);
     }
   }, []);
 
-  const fetchUpcomingEvents = useCallback(async () => {
-    try {
-      // Fetch events from API
-      const response = await fetch('/api/events');
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Filter upcoming events (future dates only)
-        const now = new Date();
-        const upcoming = data
-          .filter((event: Event) => new Date(event.date) >= now)
-          .sort((a: Event, b: Event) => new Date(a.date).getTime() - new Date(b.date).getTime())
-          .slice(0, 3); // Get first 3 upcoming events
-        
-        setUpcomingEvents(upcoming);
-      } else {
-        // Fallback to sample data if API fails
-        loadSampleEvents();
-      }
-    } catch (error) {
-      console.error('Error fetching events:', error);
-      loadSampleEvents();
-    }
+  const loadOfficers = useCallback(async () => {
+    setOfficers([]);
   }, []);
+
+  const loadAdmins = useCallback(async () => {
+    setAdmins([]);
+  }, []);
+
+  const loadData = useCallback(async () => {
+    await Promise.all([
+      loadMembers(),
+      loadOfficers(),
+      loadAdmins()
+    ]);
+    setLoading(false);
+  }, [loadMembers, loadOfficers, loadAdmins]);
 
   useEffect(() => {
-    if (status === "authenticated" && session?.user?.userType !== "ADMIN") {
-      router.push("/member/dashboard");
+    loadData();
+  }, [loadData]);
+
+  const calculateAge = (birthday: string): number => {
+    const today = new Date();
+    const birthDate = new Date(birthday);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const calculateYearsOfService = (dateOfInvestiture: string): number => {
+    const today = new Date();
+    const investitureDate = new Date(dateOfInvestiture);
+    let years = today.getFullYear() - investitureDate.getFullYear();
+    const monthDiff = today.getMonth() - investitureDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < investitureDate.getDate())) {
+      years--;
+    }
+    return Math.max(0, years);
+  };
+
+  const determineServiceLevel = (yearsOfService: number): 'Neophyte' | 'Junior' | 'Senior Server' => {
+    if (yearsOfService >= 1 && yearsOfService <= 2) return 'Neophyte';
+    if (yearsOfService >= 3 && yearsOfService <= 4) return 'Junior';
+    if (yearsOfService >= 5) return 'Senior Server';
+    return 'Neophyte';
+  };
+
+  const getServiceLevelAbbreviation = (level: string): string => {
+    switch (level) {
+      case 'NEOPHYTE':
+        return 'NEO';
+      case 'JUNIOR':
+        return 'JUN';
+      case 'Senior Server':
+        return 'SEN';
+      default: return 'SEN';
+    }
+  };
+
+  const handleMemberSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!memberFormData.surname || !memberFormData.givenName || !memberFormData.birthday || !memberFormData.address || 
+        !memberFormData.parentContact || !memberFormData.dateOfInvestiture || 
+        !memberFormData.username || !memberFormData.password) {
+      toast.error("Please fill in all required fields");
       return;
     }
 
-    if (status === "unauthenticated") {
-      router.push("/admin/login");
+    if (memberFormData.password !== memberFormData.confirmPassword) {
+      toast.error("Passwords do not match");
       return;
     }
 
-    fetchNotifications();
-    fetchUpcomingEvents();
-  }, [session, status, router, fetchNotifications, fetchUpcomingEvents]);
+    if (memberFormData.password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
 
-  const loadSampleNotifications = () => {
-    const sampleNotifications: Notification[] = [
-      {
-        id: "1",
-        message: "Monthly Meeting on February 1st, 2026 (Sunday - 1pm @ Multi-Purpose Hall)",
-        type: "reminder",
-        timestamp: new Date("2026-01-31"),
-        isRead: false
-      },
-      {
-        id: "2",
-        message: "Birthday of User User",
-        type: "update",
-        timestamp: new Date("2026-01-30"),
-        isRead: false
-      },
-      {
-        id: "3",
-        message: "New member added to altar servers",
-        type: "change",
-        timestamp: new Date("2026-01-29"),
-        isRead: false
-      }
-    ];
-    
-    setNotifications(sampleNotifications);
-    setUnreadCount(sampleNotifications.filter(n => !n.isRead).length);
-  };
+    setSubmitting(true);
 
-  const loadSampleEvents = () => {
-    const sampleEvents: Event[] = [
-      {
-        id: '1',
-        title: 'Annual Ministry Retreat',
-        date: '2026-03-15',
-        time: '09:00',
-        conductor: 'Fr. John Smith',
-        purpose: 'Spiritual renewal and team building',
-        year: 2026,
-      },
-      {
-        id: '2',
-        title: 'Holy Week Training',
-        date: '2026-04-05',
-        time: '14:00',
-        conductor: 'Deacon Michael Brown',
-        purpose: 'Preparation for Holy Week liturgies',
-        year: 2026,
-      },
-    ];
-    
-    setUpcomingEvents(sampleEvents);
-  };
-
-  const formatEventDate = (dateString: string, timeString: string) => {
-    const date = new Date(dateString);
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
-    const monthDay = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-    const year = date.getFullYear();
-    
-    // Format time to 12-hour format
-    const [hours, minutes] = timeString.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    const formattedTime = `${displayHour}:${minutes}${ampm}`;
-    
-    return `${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${year} (${dayName} - ${formattedTime})`;
-  };
-
-  const markAsRead = async (notificationId: string) => {
     try {
-      // Update notification in database
-      const response = await fetch(`/api/notifications/${notificationId}`, {
-        method: 'PATCH',
+      console.log("Creating member via API...");
+      
+      const response = await fetch("/api/members", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ isRead: true }),
+        body: JSON.stringify({
+          surname: memberFormData.surname,
+          givenName: memberFormData.givenName,
+          birthday: memberFormData.birthday,
+          address: memberFormData.address,
+          parentContact: memberFormData.parentContact,
+          dateOfInvestiture: memberFormData.dateOfInvestiture,
+          username: memberFormData.username,
+          password: memberFormData.password,
+          email: memberFormData.email || `${memberFormData.username}@ministry.local`,
+        }),
       });
 
-      if (response.ok) {
-        // Update local state
-        setNotifications(prev => 
-          prev.map(n => 
-            n.id === notificationId ? { ...n, isRead: true } : n
-          )
-        );
-        setUnreadCount(prev => Math.max(0, prev - 1));
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-      // Still update UI even if API fails
-      setNotifications(prev => 
-        prev.map(n => 
-          n.id === notificationId ? { ...n, isRead: true } : n
-        )
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+
+      const data = await response.json();
+      toast.success(`Member created successfully!`);
+      console.log("Member created successfully:", data.member);
+      
+      await loadMembers();
+      
+      setShowAddMemberForm(false);
+      setMemberFormData({
+        surname: "",
+        givenName: "",
+        birthday: "",
+        address: "",
+        parentContact: "",
+        dateOfInvestiture: "",
+        username: "",
+        password: "",
+        confirmPassword: "",
+        email: "",
+      });
+      
+    } catch (error: any) {
+      console.error("Error creating member:", error);
+      toast.error(error.message || "Failed to create member");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const markAllAsRead = async () => {
+  const handleEditMemberSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    if (!editingMember) return;
+
+    setSubmitting(true);
+
     try {
-      // Update all notifications in database
-      const response = await fetch('/api/notifications/mark-all-read', {
-        method: 'POST',
+      const formData = new FormData(e.currentTarget);
+      const newEmail = (formData.get('email') as string)?.trim();
+      
+      // If email hasn't changed, don't include it in the update
+      const updateData: any = {
+        surname: formData.get('surname'),
+        givenName: formData.get('givenName'),
+        birthdate: formData.get('birthdate'),
+        parentContact: formData.get('parentContact'),
+        address: formData.get('address'),
+        dateJoined: formData.get('dateJoined'),
+      };
+
+      // Only include email if it's different from current email
+      if (newEmail && newEmail !== editingMember.email) {
+        updateData.email = newEmail;
+      }
+      
+      const response = await fetch(`/api/members/${editingMember.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updateData),
       });
 
-      if (response.ok) {
-        // Update local state
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        setUnreadCount(0);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        
+        // Handle specific error messages
+        if (errorData.error && errorData.error.includes('email')) {
+          throw new Error("This email address is already being used by another member. Please use a different email.");
+        }
+        
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
-    } catch (error) {
-      console.error('Error marking all as read:', error);
-      // Still update UI even if API fails
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setUnreadCount(0);
+
+      toast.success(`${editingMember.givenName} ${editingMember.surname} updated successfully!`);
+      setEditingMember(null);
+      setSelectedMember(null);
+      await loadMembers();
+      
+    } catch (error: any) {
+      console.error("Error updating member:", error);
+      toast.error(error.message || "Failed to update member");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleLogout = async () => {
-    toast.success("Logging out...");
-    await signOut({ redirect: true, callbackUrl: "/" });
+  const handleOfficerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!officerFormData.memberId || !officerFormData.position) {
+      toast.error("Please select a member and position");
+      return;
+    }
+
+    const existingOfficer = officers.find(officer => 
+      officer.position === officerFormData.position && officer.isActive
+    );
+    
+    if (existingOfficer) {
+      toast.error(`Position "${officerFormData.position}" is already assigned to ${existingOfficer.memberName}`);
+      return;
+    }
+
+    const memberIsOfficer = officers.find(officer => 
+      officer.memberId === officerFormData.memberId && officer.isActive
+    );
+    
+    if (memberIsOfficer) {
+      toast.error(`This member is already assigned as ${memberIsOfficer.position}`);
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const selectedMember = members.find(member => member.id === officerFormData.memberId);
+      if (!selectedMember) {
+        throw new Error("Selected member not found");
+      }
+
+      const newOfficer: Officer = {
+        id: `officer-${Date.now()}`,
+        memberId: officerFormData.memberId,
+        memberName: formatMemberName(selectedMember.surname, selectedMember.givenName),
+        position: officerFormData.position,
+        email: selectedMember.email,
+        contactNumber: selectedMember.parentContact,
+        dateAppointed: officerFormData.dateAppointed,
+        isActive: true
+      };
+
+      setOfficers([...officers, newOfficer]);
+      toast.success(`${formatMemberName(selectedMember.surname, selectedMember.givenName)} appointed as ${officerFormData.position}!`);
+      
+      setShowAddOfficerForm(false);
+      setOfficerFormData({
+        memberId: "",
+        position: "",
+        dateAppointed: new Date().toISOString().split('T')[0],
+      });
+      
+    } catch (error: any) {
+      console.error("Error appointing officer:", error);
+      toast.error(error.message || "Failed to appoint officer");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  if (status === "loading") {
-    return (
-      <div 
-        className="min-h-screen flex items-center justify-center"
-        style={{
-          background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-        }}
-      >
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
-      </div>
+  const handleRemoveClick = (member: Member) => {
+    setRemoveConfirmation({
+      isOpen: true,
+      member: member
+    });
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!removeConfirmation.member) return;
+
+    try {
+      console.log("Removing member:", removeConfirmation.member.id);
+      
+      const response = await fetch(`/api/members/${removeConfirmation.member.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to remove member");
+      }
+
+      toast.success(`${formatMemberName(removeConfirmation.member.surname, removeConfirmation.member.givenName)} has been removed`);
+      
+      setMembers(prev => prev.filter(m => m.id !== removeConfirmation.member?.id));
+      setRemoveConfirmation({ isOpen: false, member: null });
+      setSelectedMember(null);
+      
+    } catch (error: any) {
+      console.error("Error removing member:", error);
+      toast.error(error.message || "Failed to remove member");
+    }
+  };
+
+  const handleCancelRemove = () => {
+    setRemoveConfirmation({ isOpen: false, member: null });
+  };
+
+  const handleMemberChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setMemberFormData({
+      ...memberFormData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const handleOfficerChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setOfficerFormData({
+      ...officerFormData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const removeOfficer = (officerId: string) => {
+    const officer = officers.find(o => o.id === officerId);
+    if (officer) {
+      setOfficers(officers.filter(o => o.id !== officerId));
+      toast.success(`${officer.memberName} removed from ${officer.position}`);
+    }
+  };
+
+  const handleBackClick = () => {
+    router.push('/admin');
+  };
+
+  const getAvailableMembers = () => {
+    const activeOfficerMemberIds = officers.filter(o => o.isActive).map(o => o.memberId);
+    return members.filter(member => 
+      member.memberStatus === 'ACTIVE' && 
+      !activeOfficerMemberIds.includes(member.id)
     );
-  }
+  };
+
+  const getAvailablePositions = () => {
+    const takenPositions = officers.filter(o => o.isActive).map(o => o.position);
+    return OFFICER_POSITIONS.filter(position => !takenPositions.includes(position));
+  };
+
+  const renderTabContent = () => {
+    if (loading) {
+      return (
+        <div className="p-12 text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      );
+    }
+
+    switch (activeTab) {
+      case 'members':
+        return (
+          <div className="space-y-0">
+            {members.length === 0 ? (
+              <div className="p-12 text-center">
+                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197v0M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <p className="text-gray-500 mb-4">No members found in database</p>
+                <button
+                  onClick={() => setShowAddMemberForm(true)}
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Add your first member
+                </button>
+              </div>
+            ) : (
+              members.map((member) => (
+                <div 
+                  key={member.id} 
+                  className="bg-white px-4 py-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={() => setSelectedMember(member)}
+                >
+                  <div className="grid gap-1 md:gap-2 text-sm items-center" style={{gridTemplateColumns: '2fr 1fr 1fr 1fr'}}>
+                    <div className="font-medium text-gray-900 truncate text-xs md:text-sm">
+                      {formatMemberName(member.surname, member.givenName)}
+                    </div>
+                    
+                    <div className="text-gray-600 text-xs md:text-sm">
+                      {new Date(member.birthdate).toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric' 
+                      })}
+                    </div>
+
+                    <div className="text-gray-600 text-xs md:text-sm">
+                      {member.age || 0}
+                    </div>
+
+                    <div>
+                      <span 
+                        className="inline-block px-1 md:px-2 py-1 text-xs font-medium text-white rounded whitespace-nowrap"
+                        style={{
+                          background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                        }}
+                      >
+                        {getServiceLevelAbbreviation(member.serviceLevel)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        );
+      
+      case 'officers':
+        return (
+          <div className="space-y-2">
+            {officers.filter(officer => officer.isActive).map((officer) => (
+              <div key={officer.id} className="bg-white p-4 border-b border-gray-100 hover:bg-gray-50">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="font-medium text-gray-900">
+                    {officer.memberName}
+                    <div className="text-xs text-gray-500">{officer.position}</div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-gray-600">{officer.contactNumber}</div>
+                    <button
+                      onClick={() => removeOfficer(officer.id)}
+                      className="text-red-500 hover:text-red-700 text-xs"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {officers.filter(officer => officer.isActive).length === 0 && (
+              <div className="p-12 text-center">
+                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <p className="text-gray-500 mb-4">No officers appointed yet</p>
+                <button
+                  onClick={() => setShowAddOfficerForm(true)}
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Appoint your first officer
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      
+      case 'admins':
+        return (
+          <div className="space-y-2">
+            {admins.map((admin) => (
+              <div key={admin.id} className="bg-white p-4 border-b border-gray-100">
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="font-medium text-gray-900">
+                    {admin.name}
+                    <div className="text-xs text-gray-500">{admin.adminId}</div>
+                  </div>
+                  <div className="text-gray-600">{admin.position}</div>
+                  <div className="text-gray-600 text-sm">{admin.contactNumber}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
 
   return (
     <div 
@@ -246,92 +622,27 @@ export default function AdminDashboard() {
         background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
       }}
     >
-      {/* Header Section */}
+      {/* Blue Header with Back Button and Logo */}
       <div className="px-6 py-6">
-        <div className="flex items-start justify-between mb-6">
-          {/* Notification Bell Icon */}
+        <div className="flex items-center justify-between">
           <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="relative bg-white/20 backdrop-blur-sm p-3 rounded-xl hover:bg-white/30 transition-colors"
+            onClick={handleBackClick}
+            className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center hover:bg-white/30 transition-colors"
           >
-            <div className="relative">
-              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
-              </svg>
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-                  {unreadCount}
-                </span>
-              )}
-            </div>
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
           </button>
-
-          {/* Logo */}
           <div className="relative w-16 h-16">
             <Image
               src="/images/MAS LOGO.png"
-              alt="MAS Logo"
+              alt="Ministry of Altar Servers Logo"
               fill
               sizes="64px"
               className="object-contain"
               priority
             />
           </div>
-        </div>
-
-        {/* Welcome Text */}
-        <div className="mb-6">
-          <p className="text-white/80 text-sm mb-1">Welcome back!</p>
-          <h1 className="text-2xl font-bold text-white">
-            {session?.user?.name || "Admin Admin"}
-          </h1>
-        </div>
-
-        {/* Search Bar and Action Buttons */}
-        <div className="flex items-center gap-3 mb-6">
-          {/* Search Bar */}
-          <div className="relative flex-1">
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white/20 backdrop-blur-sm rounded-xl border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 text-white placeholder-white/60 text-base"
-            />
-            <svg
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/60"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-          </div>
-
-          {/* User Management Button */}
-          <button
-            onClick={() => router.push('/admin/members')}
-            className="bg-white/20 backdrop-blur-sm p-3 rounded-xl hover:bg-white/30 transition-colors flex-shrink-0"
-          >
-            <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-            </svg>
-          </button>
-
-          {/* Birthday Button */}
-          <button
-            onClick={() => router.push('/admin/birthdays')}
-            className="bg-white/20 backdrop-blur-sm p-3 rounded-xl hover:bg-white/30 transition-colors flex-shrink-0"
-          >
-            <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M6 3a1 1 0 011-1h.01a1 1 0 010 2H7a1 1 0 01-1-1zm2 3a1 1 0 00-2 0v1a2 2 0 00-2 2v1a2 2 0 00-2 2v.683a3.7 3.7 0 011.055.485 1.704 1.704 0 001.89 0 3.704 3.704 0 014.11 0 1.704 1.704 0 001.89 0 3.704 3.704 0 014.11 0 1.704 1.704 0 001.89 0A3.7 3.7 0 0118 12.683V12a2 2 0 00-2-2V9a2 2 0 00-2-2V6a1 1 0 10-2 0v1h-1V6a1 1 0 10-2 0v1H8V6zm10 8.868a3.704 3.704 0 01-4.055-.036 1.704 1.704 0 00-1.89 0 3.704 3.704 0 01-4.11 0 1.704 1.704 0 00-1.89 0A3.704 3.704 0 012 14.868V17a1 1 0 001 1h14a1 1 0 001-1v-2.132zM9 3a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1zm3 0a1 1 0 011-1h.01a1 1 0 110 2H13a1 1 0 01-1-1z" clipRule="evenodd" />
-            </svg>
-          </button>
         </div>
       </div>
 
@@ -343,269 +654,797 @@ export default function AdminDashboard() {
           marginTop: '20px'
         }}
       >
-        {/* Main Action Cards Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          {/* Monthly Meeting Card */}
-          <button
-            onClick={() => router.push('/admin/monthly-meeting')}
-            className="bg-white border-2 border-orange-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all hover:scale-105 transform text-left"
-          >
-            <div className="flex items-start mb-3">
-              <div 
-                className="p-2 rounded-lg"
-                style={{
-                  background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'
-                }}
-              >
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                </svg>
-              </div>
-            </div>
-            <p className="text-xs text-orange-600 mb-1 font-medium">1st Sunday of the Month</p>
-            <h3 className="text-xl font-bold text-gray-900 leading-tight">Monthly<br/>Meeting</h3>
-          </button>
-
-          {/* Sunday Groups Card */}
-          <button
-            onClick={() => router.push('/admin/sunday-service')}
-            className="bg-white border-2 border-gray-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all hover:scale-105 transform text-left"
-          >
-            <div className="flex items-start mb-3">
-              <div 
-                className="p-2 rounded-lg"
-                style={{
-                  background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                }}
-              >
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                </svg>
-              </div>
-            </div>
-            <p className="text-xs text-gray-600 mb-1 font-medium">Sunday Service</p>
-            <h3 className="text-xl font-bold text-gray-900 leading-tight">Sunday<br/>Groups</h3>
-          </button>
-
-          {/* Daily Masses Card */}
-          <button
-            onClick={() => router.push('/admin/daily-attendance')}
-            className="bg-white border-2 border-gray-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all hover:scale-105 transform text-left"
-          >
-            <div className="flex items-start mb-3">
-              <div 
-                className="p-2 rounded-lg"
-                style={{
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                }}
-              >
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                </svg>
-              </div>
-            </div>
-            <p className="text-xs text-gray-600 mb-1 font-medium">Daily Attendance</p>
-            <h3 className="text-xl font-bold text-gray-900 leading-tight">Daily<br/>Masses</h3>
-          </button>
-
-          {/* Event Tracker Card */}
-          <button
-            onClick={() => router.push('/admin/events')}
-            className="bg-white border-2 border-gray-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all hover:scale-105 transform text-left"
-          >
-            <div className="flex items-start mb-3">
-              <div 
-                className="p-2 rounded-lg"
-                style={{
-                  background: 'linear-gradient(135deg, #9333ea 0%, #7e22ce 100%)'
-                }}
-              >
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                </svg>
-              </div>
-            </div>
-            <p className="text-xs text-gray-600 mb-1 font-medium">Event List</p>
-            <h3 className="text-xl font-bold text-gray-900 leading-tight">Event<br/>Tracker</h3>
-          </button>
-        </div>
-
-        {/* Upcoming Events Section */}
-        <div className="bg-gradient-to-r from-red-400 to-pink-400 rounded-3xl p-5 shadow-sm border-2 border-red-200 mb-6">
-          <div className="flex items-start mb-3">
-            <svg className="w-5 h-5 text-red-900 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-            </svg>
-            <h3 className="text-sm font-bold text-red-900 uppercase tracking-wide">Upcoming</h3>
-          </div>
-          
-          <div className="space-y-2">
-            {upcomingEvents.length === 0 ? (
-              <div className="text-sm text-gray-900">
-                <p>No upcoming events scheduled</p>
-              </div>
-            ) : (
-              upcomingEvents.map((event) => (
-                <div key={event.id} className="flex items-start">
-                  <span className="text-red-900 mr-2 mt-0.5">•</span>
-                  <p className="text-sm text-gray-900">
-                    {event.title} on {formatEventDate(event.date, event.time)}
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Navigation */}
-      <div 
-        className="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-[30px] p-4 shadow-2xl z-50"
-        style={{
-          background: '#000080',
-          transform: 'translateX(-50%)'
-        }}
-      >
-        <div className="flex justify-center space-x-8 px-4">
-          <button
-            onClick={() => router.push('/admin')}
-            className="flex flex-col items-center text-white transition-colors"
-          >
-            <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-            </svg>
-            <span className="text-xs">Home</span>
-          </button>
-          <button
-            onClick={() => router.push('/admin/events')}
-            className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
-          >
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-            </svg>
-            <span className="text-xs">Events</span>
-          </button>
-          <button
-            onClick={() => setShowLogoutConfirm(true)}
-            className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
-          >
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            <span className="text-xs">Logout</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Notifications Panel */}
-      {showNotifications && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20">
-          <div className="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl max-h-[70vh] overflow-hidden flex flex-col">
-            <div 
-              className="p-6 rounded-t-2xl"
+        {/* Action Bar with Tabs */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => setActiveTab('members')}
               style={{
-                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                background: activeTab === 'members' 
+                  ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
+                  : '#f3f4f6'
               }}
+              className="w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm"
             >
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white">Notifications</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={markAllAsRead}
-                    className="text-xs text-white/80 hover:text-white font-medium"
-                  >
-                    Mark all read
-                  </button>
-                  <button
-                    onClick={() => setShowNotifications(false)}
-                    className="text-white/80 hover:text-white"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+              <svg className={`w-5 h-5 ${activeTab === 'members' ? 'text-white' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setActiveTab('officers')}
+              style={{
+                background: activeTab === 'officers' 
+                  ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
+                  : '#f3f4f6'
+              }}
+              className="w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm"
+            >
+              <svg className={`w-5 h-5 ${activeTab === 'officers' ? 'text-white' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197v0M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setActiveTab('admins')}
+              style={{
+                background: activeTab === 'admins' 
+                  ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
+                  : '#f3f4f6'
+              }}
+              className="w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm"
+            >
+              <svg className={`w-5 h-5 ${activeTab === 'admins' ? 'text-white' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+            </button>
+          </div>
+
+          <button
+            onClick={() => activeTab === 'members' ? setShowAddMemberForm(true) : activeTab === 'officers' ? setShowAddOfficerForm(true) : toast("Add admin functionality coming soon!", { icon: '💼', duration: 3000 })}
+            style={{
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+            }}
+            className="text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center shadow-sm"
+          >
+            {activeTab === 'members' ? '+ Members' : activeTab === 'officers' ? '+ Officer' : '+ Admin'}
+          </button>
+        </div>
+
+        {/* Table Headers - MEMBERS TAB ONLY */}
+        {activeTab === 'members' && (
+          <div className="bg-white px-4 py-3 border-b-2 border-gray-200 rounded-t-lg mb-0">
+            <div className="grid gap-1 md:gap-2 text-xs font-bold text-gray-700 uppercase tracking-wider" style={{gridTemplateColumns: '2fr 1fr 1fr 1fr'}}>
+              <div>Name</div>
+              <div>Bday</div>
+              <div>Age</div>
+              <div>Level</div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab Content */}
+        <div className="bg-white rounded-b-lg border-2 border-gray-100">
+          {renderTabContent()}
+          <div className="h-32"></div>
+        </div>
+      </div>
+
+      {/* Remove Confirmation Modal */}
+      {removeConfirmation.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Remove Member</h3>
+              </div>
+              
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to remove <span className="font-semibold">
+                  {removeConfirmation.member && formatMemberName(removeConfirmation.member.surname, removeConfirmation.member.givenName)}
+                </span> from the ministry? This action cannot be undone.
+              </p>
+              
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
+                <div className="flex">
+                  <svg className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <div className="text-sm">
+                    <p className="text-yellow-800 font-medium">Warning</p>
+                    <p className="text-yellow-700">This will delete all member data including attendance records and login credentials.</p>
+                  </div>
                 </div>
               </div>
-            </div>
-            
-            <div className="overflow-y-auto flex-1">
-              {notifications.length === 0 ? (
-                <div className="p-8 text-center">
-                  <p className="text-gray-500">No notifications</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-200">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
-                        !notification.isRead ? 'bg-blue-50' : ''
-                      }`}
-                      onClick={() => markAsRead(notification.id)}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                          !notification.isRead ? 'bg-blue-600' : 'bg-gray-300'
-                        }`} />
-                        <div className="flex-1">
-                          <p className="text-sm text-gray-900">{notification.message}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {notification.timestamp.toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleCancelRemove}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmRemove}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Remove Member
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+      {/* Member Details Modal */}
+      {selectedMember && !editingMember && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div 
               className="p-6 rounded-t-2xl"
               style={{
                 background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
               }}
             >
-              <h3 className="text-lg font-bold text-white text-center">
-                Confirm Logout
-              </h3>
-            </div>
-            <div className="p-6">
-              <div className="flex items-center justify-center mb-4">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
-                  <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-white">Member Details</h2>
+                <button
+                  onClick={() => setSelectedMember(null)}
+                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
+                </button>
+              </div>
+
+              <div className="text-center">
+                <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-3">
+                  <span className="text-white font-bold text-2xl">
+                    {selectedMember.surname.charAt(0)}
+                  </span>
+                </div>
+                <h3 className="text-xl font-semibold text-white">
+                  {getFullName(selectedMember.surname, selectedMember.givenName)}
+                </h3>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500 mb-1">Age</p>
+                    <p className="font-medium">{selectedMember.age} years old</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Service Level</p>
+                    <span 
+                      className="inline-block px-2 py-1 text-xs font-medium text-white rounded"
+                      style={{
+                        background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                      }}
+                    >
+                      {selectedMember.serviceLevel}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Birthday</p>
+                    <p className="font-medium">{new Date(selectedMember.birthdate).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Years of Service</p>
+                    <p className="font-medium">{selectedMember.yearsOfService} years</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-gray-500 mb-1">Email</p>
+                    <p className="font-medium">{selectedMember.email}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-gray-500 mb-1">Parent Contact</p>
+                    <p className="font-medium">{selectedMember.parentContact}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-gray-500 mb-1">Address</p>
+                    <p className="font-medium">{selectedMember.address}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Date Joined</p>
+                    <p className="font-medium">{new Date(selectedMember.dateJoined).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Status</p>
+                    <span className="inline-block px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
+                      {selectedMember.memberStatus}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button 
+                    onClick={() => setEditingMember(selectedMember)}
+                    style={{
+                      background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                    }}
+                    className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
+                  >
+                    Edit Member
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setSelectedMember(null);
+                      handleRemoveClick(selectedMember);
+                    }}
+                    className="flex-1 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    Remove
+                  </button>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 text-center mb-6">
-                Are you sure you want to logout? You will need to login again to access the admin panel.
-              </p>
-              <div className="flex gap-3">
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Member Form Modal */}
+      {showAddMemberForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div 
+              className="p-6 rounded-t-2xl"
+              style={{
+                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+              }}
+            >
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-white">Add New Member</h2>
                 <button
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold rounded-xl transition-colors"
+                  onClick={() => setShowAddMemberForm(false)}
+                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
+                  disabled={submitting}
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleMemberSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Surname (Last Name) *
+                </label>
+                <input
+                  type="text"
+                  name="surname"
+                  value={memberFormData.surname}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter surname"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Given Name (First Name) *
+                </label>
+                <input
+                  type="text"
+                  name="givenName"
+                  value={memberFormData.givenName}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter given name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email (Optional)
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={memberFormData.email}
+                  onChange={handleMemberChange}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Username *
+                </label>
+                <input
+                  type="text"
+                  name="username"
+                  value={memberFormData.username}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Choose a username"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Password *
+                </label>
+                <input
+                  type="password"
+                  name="password"
+                  value={memberFormData.password}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Minimum 6 characters"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Confirm Password *
+                </label>
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  value={memberFormData.confirmPassword}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Confirm password"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Birthday *
+                </label>
+                <input
+                  type="date"
+                  name="birthday"
+                  value={memberFormData.birthday}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                />
+                {memberFormData.birthday && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Age: {calculateAge(memberFormData.birthday)} years old
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Address *
+                </label>
+                <textarea
+                  name="address"
+                  value={memberFormData.address}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  rows={3}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter complete address"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Parent Contact Number *
+                </label>
+                <input
+                  type="tel"
+                  name="parentContact"
+                  value={memberFormData.parentContact}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="+63 9XX XXX XXXX"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date of Investiture *
+                </label>
+                <input
+                  type="date"
+                  name="dateOfInvestiture"
+                  value={memberFormData.dateOfInvestiture}
+                  onChange={handleMemberChange}
+                  required
+                  disabled={submitting}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                />
+                {memberFormData.dateOfInvestiture && (
+                  <div className="mt-2 text-sm">
+                    <p className="text-gray-600">
+                      Years of Service: {calculateYearsOfService(memberFormData.dateOfInvestiture)} years
+                    </p>
+                    <p className="text-gray-600">
+                      Service Level: <span 
+                        className="px-2 py-1 rounded-full text-xs font-medium text-white"
+                        style={{
+                          background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                        }}
+                      >
+                        {determineServiceLevel(calculateYearsOfService(memberFormData.dateOfInvestiture))}
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMemberForm(false)}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:bg-gray-100"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    setShowLogoutConfirm(false);
-                    handleLogout();
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    background: submitting ? '#93c5fd' : 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
                   }}
-                  className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl transition-colors"
+                  className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
                 >
-                  Logout
+                  {submitting ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Creating...
+                    </div>
+                  ) : (
+                    "Add Member"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Member Modal */}
+      {editingMember && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div 
+              className="p-6 rounded-t-2xl"
+              style={{
+                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+              }}
+            >
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-white">Edit Member</h2>
+                <button
+                  onClick={() => setEditingMember(null)}
+                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
+                  disabled={submitting}
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
             </div>
+
+            <form onSubmit={handleEditMemberSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Surname (Last Name)
+                </label>
+                <input
+                  type="text"
+                  name="surname"
+                  defaultValue={editingMember.surname}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter surname"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Given Name (First Name)
+                </label>
+                <input
+                  type="text"
+                  name="givenName"
+                  defaultValue={editingMember.givenName}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter given name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  defaultValue={editingMember.email}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Birthday
+                </label>
+                <input
+                  type="date"
+                  name="birthdate"
+                  defaultValue={editingMember.birthdate.split('T')[0]}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Parent Contact Number
+                </label>
+                <input
+                  type="tel"
+                  name="parentContact"
+                  defaultValue={editingMember.parentContact}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="+63 9XX XXX XXXX"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Address
+                </label>
+                <textarea
+                  name="address"
+                  defaultValue={editingMember.address}
+                  disabled={submitting}
+                  rows={3}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter complete address"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date Joined
+                </label>
+                <input
+                  type="date"
+                  name="dateJoined"
+                  defaultValue={editingMember.dateJoined.split('T')[0]}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(null)}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    background: submitting ? '#93c5fd' : 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                  }}
+                  className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  {submitting ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Updating...
+                    </div>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Officer Form Modal */}
+      {showAddOfficerForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div 
+              className="p-6 rounded-t-2xl"
+              style={{
+                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+              }}
+            >
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-white">Appoint Officer</h2>
+                <button
+                  onClick={() => setShowAddOfficerForm(false)}
+                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
+                  disabled={submitting}
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleOfficerSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Member *
+                </label>
+                <select
+                  name="memberId"
+                  value={officerFormData.memberId}
+                  onChange={handleOfficerChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                >
+                  <option value="">Choose a member...</option>
+                  {getAvailableMembers().map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {formatMemberName(member.surname, member.givenName)} ({member.serviceLevel})
+                    </option>
+                  ))}
+                </select>
+                {getAvailableMembers().length === 0 && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    No available members (all active members are already officers)
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Position *
+                </label>
+                <select
+                  name="position"
+                  value={officerFormData.position}
+                  onChange={handleOfficerChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                >
+                  <option value="">Select position...</option>
+                  {getAvailablePositions().map((position) => (
+                    <option key={position} value={position}>
+                      {position}
+                    </option>
+                  ))}
+                </select>
+                {getAvailablePositions().length === 0 && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    All positions are already filled
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date of Appointment *
+                </label>
+                <input
+                  type="date"
+                  name="dateAppointed"
+                  value={officerFormData.dateAppointed}
+                  onChange={handleOfficerChange}
+                  required
+                  disabled={submitting}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddOfficerForm(false)}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || getAvailableMembers().length === 0 || getAvailablePositions().length === 0}
+                  style={{
+                    background: (submitting || getAvailableMembers().length === 0 || getAvailablePositions().length === 0) 
+                      ? '#9ca3af' 
+                      : 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                  }}
+                  className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  {submitting ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Appointing...
+                    </div>
+                  ) : (
+                    "Appoint Officer"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Navigation */}
+      {!selectedMember && !editingMember && (
+        <div 
+          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-[30px] p-4 shadow-2xl z-50"
+          style={{
+            background: '#000080',
+            transform: 'translateX(-50%)'
+          }}
+        >
+          <div className="flex justify-center space-x-8 px-4">
+            <button
+              onClick={() => router.push('/admin')}
+              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+              </svg>
+              <span className="text-xs">Home</span>
+            </button>
+            <button
+              onClick={() => router.push('/admin/messages')}
+              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span className="text-xs">Messages</span>
+            </button>
+            <button
+              onClick={() => router.push('/admin/birthdays')}
+              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197v0M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              <span className="text-xs">Birthdays</span>
+            </button>
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-// app/admin/members/page.tsx - Fixed version with functional edit button and hidden bottom nav
+// app/admin/members/page.tsx - Complete Fixed Version with Working Edit
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -130,7 +130,6 @@ export default function UserManagement() {
       const data = await response.json();
       console.log("Members loaded:", data);
       
-      // Map members data and add calculated fields
       const membersWithCalculatedFields = data.map((member: any) => {
         const age = member.birthdate ? calculateAge(member.birthdate) : 0;
         const yearsOfService = member.dateJoined ? calculateYearsOfService(member.dateJoined) : 0;
@@ -198,18 +197,18 @@ export default function UserManagement() {
     if (yearsOfService >= 1 && yearsOfService <= 2) return 'Neophyte';
     if (yearsOfService >= 3 && yearsOfService <= 4) return 'Junior';
     if (yearsOfService >= 5) return 'Senior Server';
-    return 'Neophyte'; // Default for 0 years
+    return 'Neophyte';
   };
 
   const getServiceLevelAbbreviation = (level: string): string => {
     switch (level) {
       case 'NEOPHYTE':
-        return 'NEOPHYTE';
-      case 'SENIOR':
-        return 'JUNIOR';
+        return 'NEO';
+      case 'JUNIOR':
+        return 'JUN';
       case 'Senior Server':
-        return 'SENIOR';
-      default: return 'SENIOR';
+        return 'SEN';
+      default: return 'SEN';
     }
   };
 
@@ -284,6 +283,50 @@ export default function UserManagement() {
     } catch (error: any) {
       console.error("Error creating member:", error);
       toast.error(error.message || "Failed to create member");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditMemberSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    if (!editingMember) return;
+
+    setSubmitting(true);
+
+    try {
+      const formData = new FormData(e.currentTarget);
+      
+      const response = await fetch(`/api/members/${editingMember.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          surname: formData.get('surname'),
+          givenName: formData.get('givenName'),
+          email: formData.get('email'),
+          birthdate: formData.get('birthdate'),
+          parentContact: formData.get('parentContact'),
+          address: formData.get('address'),
+          dateJoined: formData.get('dateJoined'),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      toast.success(`${editingMember.givenName} ${editingMember.surname} updated successfully!`);
+      setEditingMember(null);
+      setSelectedMember(null);
+      await loadMembers();
+      
+    } catch (error: any) {
+      console.error("Error updating member:", error);
+      toast.error(error.message || "Failed to update member");
     } finally {
       setSubmitting(false);
     }
@@ -442,7 +485,7 @@ export default function UserManagement() {
     switch (activeTab) {
       case 'members':
         return (
-          <div className="space-y-2">
+          <div className="space-y-0">
             {members.length === 0 ? (
               <div className="p-12 text-center">
                 <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -460,23 +503,28 @@ export default function UserManagement() {
               members.map((member) => (
                 <div 
                   key={member.id} 
-                  className="bg-white p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
+                  className="bg-white px-4 py-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
                   onClick={() => setSelectedMember(member)}
                 >
-                  <div className="grid grid-cols-4 gap-4 text-sm">
-                    <div className="font-medium text-gray-900">
+                  <div className="grid gap-1 md:gap-2 text-sm items-center" style={{gridTemplateColumns: '2fr 1fr 1fr 1fr'}}>
+                    <div className="font-medium text-gray-900 truncate text-xs md:text-sm">
                       {formatMemberName(member.surname, member.givenName)}
                     </div>
-                    <div className="text-gray-600">
+                    
+                    <div className="text-gray-600 text-xs md:text-sm">
                       {new Date(member.birthdate).toLocaleDateString('en-US', { 
                         month: 'short', 
                         day: 'numeric' 
                       })}
                     </div>
-                    <div className="text-gray-600">{member.age || 0}</div>
+
+                    <div className="text-gray-600 text-xs md:text-sm">
+                      {member.age || 0}
+                    </div>
+
                     <div>
                       <span 
-                        className="inline-block px-2 py-1 text-xs font-medium text-white rounded"
+                        className="inline-block px-1 md:px-2 py-1 text-xs font-medium text-white rounded whitespace-nowrap"
                         style={{
                           background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
                         }}
@@ -550,49 +598,6 @@ export default function UserManagement() {
       
       default:
         return null;
-    }
-  };
-
-  const getTabHeaders = () => {
-    switch (activeTab) {
-      case 'members':
-        return ['Members', 'Birthday', 'Age', 'Level'];
-      case 'officers':
-        return ['Officers', 'Contact Number'];
-      case 'admins':
-        return ['Admins', 'Position', 'Contact'];
-      default:
-        return [];
-    }
-  };
-
-  const getAddButtonText = () => {
-    switch (activeTab) {
-      case 'members':
-        return '+ Members';
-      case 'officers':
-        return '+ Officer';
-      case 'admins':
-        return '+ Admin';
-      default:
-        return '+ Add';
-    }
-  };
-
-  const handleAddButtonClick = () => {
-    switch (activeTab) {
-      case 'members':
-        setShowAddMemberForm(true);
-        break;
-      case 'officers':
-        setShowAddOfficerForm(true);
-        break;
-      case 'admins':
-        toast("Add admin functionality coming soon!", {
-          icon: '💼',
-          duration: 3000,
-        });
-        break;
     }
   };
 
@@ -680,28 +685,27 @@ export default function UserManagement() {
           </div>
 
           <button
-            onClick={handleAddButtonClick}
+            onClick={() => activeTab === 'members' ? setShowAddMemberForm(true) : activeTab === 'officers' ? setShowAddOfficerForm(true) : toast("Add admin functionality coming soon!", { icon: '💼', duration: 3000 })}
             style={{
               background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
             }}
             className="text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center shadow-sm"
           >
-            {getAddButtonText()}
+            {activeTab === 'members' ? '+ Members' : activeTab === 'officers' ? '+ Officer' : '+ Admin'}
           </button>
         </div>
 
-        {/* Table Headers */}
-        <div className="bg-gray-50 px-4 py-3 border-b-2 border-gray-200 rounded-t-lg mb-2">
-          <div className={`grid gap-4 text-xs font-bold text-gray-700 uppercase tracking-wider ${
-            activeTab === 'officers' ? 'grid-cols-2' : 
-            activeTab === 'admins' ? 'grid-cols-3' :
-            'grid-cols-4'
-          }`}>
-            {getTabHeaders().map((header, index) => (
-              <div key={index}>{header}</div>
-            ))}
+        {/* Table Headers - MEMBERS TAB ONLY */}
+        {activeTab === 'members' && (
+          <div className="bg-white px-4 py-3 border-b-2 border-gray-200 rounded-t-lg mb-0">
+            <div className="grid gap-1 md:gap-2 text-xs font-bold text-gray-700 uppercase tracking-wider" style={{gridTemplateColumns: '2fr 1fr 1fr 1fr'}}>
+              <div>Name</div>
+              <div>Bday</div>
+              <div>Age</div>
+              <div>Level</div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Tab Content */}
         <div className="bg-white rounded-b-lg border-2 border-gray-100">
@@ -761,7 +765,7 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Member Details Modal - FIXED: with functional edit button and hidden bottom nav */}
+      {/* Member Details Modal */}
       {selectedMember && !editingMember && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -790,7 +794,7 @@ export default function UserManagement() {
                   </span>
                 </div>
                 <h3 className="text-xl font-semibold text-white">
-                  {formatMemberName(selectedMember.surname, selectedMember.givenName)}
+                  {getFullName(selectedMember.surname, selectedMember.givenName)}
                 </h3>
               </div>
             </div>
@@ -1108,6 +1112,161 @@ export default function UserManagement() {
         </div>
       )}
 
+      {/* Edit Member Modal */}
+      {editingMember && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div 
+              className="p-6 rounded-t-2xl"
+              style={{
+                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+              }}
+            >
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-white">Edit Member</h2>
+                <button
+                  onClick={() => setEditingMember(null)}
+                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
+                  disabled={submitting}
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleEditMemberSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Surname (Last Name)
+                </label>
+                <input
+                  type="text"
+                  name="surname"
+                  defaultValue={editingMember.surname}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter surname"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Given Name (First Name)
+                </label>
+                <input
+                  type="text"
+                  name="givenName"
+                  defaultValue={editingMember.givenName}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter given name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  defaultValue={editingMember.email}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Birthday
+                </label>
+                <input
+                  type="date"
+                  name="birthdate"
+                  defaultValue={editingMember.birthdate.split('T')[0]}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Parent Contact Number
+                </label>
+                <input
+                  type="tel"
+                  name="parentContact"
+                  defaultValue={editingMember.parentContact}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="+63 9XX XXX XXXX"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Address
+                </label>
+                <textarea
+                  name="address"
+                  defaultValue={editingMember.address}
+                  disabled={submitting}
+                  rows={3}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter complete address"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date Joined
+                </label>
+                <input
+                  type="date"
+                  name="dateJoined"
+                  defaultValue={editingMember.dateJoined.split('T')[0]}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(null)}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    background: submitting ? '#93c5fd' : 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                  }}
+                  className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  {submitting ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Updating...
+                    </div>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Add Officer Form Modal */}
       {showAddOfficerForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1235,7 +1394,7 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Bottom Navigation - HIDDEN when viewing member details */}
+      {/* Bottom Navigation */}
       {!selectedMember && !editingMember && (
         <div 
           className="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-[30px] p-4 shadow-2xl z-50"
