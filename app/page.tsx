@@ -335,7 +335,7 @@ export default function Home() {
               
               {/* Subtitle */}
               <p className="text-xl md:text-2xl text-blue-100 mb-10 max-w-2xl mx-auto drop-shadow-md">
-                "I have come not to be served, but to serve." <i>-Matthew 20:28</i>
+                &quot;I have come not to be served, but to serve.&quot; <i>-Matthew 20:28</i>
               </p>
               
               {/* Description */}
@@ -514,7 +514,7 @@ export default function Home() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Dues & Finances</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Dues &amp; Finances</h3>
                 <p className="text-sm text-gray-600">Track contributions</p>
               </Link>
 
