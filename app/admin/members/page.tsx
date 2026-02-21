@@ -1,4 +1,6 @@
-// app/admin/members/page.tsx - Complete Fixed Version
+// app/admin/members/page.tsx - FIXED VERSION
+// Fixed: 1) Hide bottom nav when modals open 2) Properly delete from database
+
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -100,6 +102,7 @@ export default function UserManagement() {
   });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
   const [memberFormData, setMemberFormData] = useState({
     surname: "",
     givenName: "",
@@ -419,8 +422,10 @@ export default function UserManagement() {
   const handleConfirmRemove = async () => {
     if (!removeConfirmation.member) return;
 
+    setDeletingMemberId(removeConfirmation.member.id);
+
     try {
-      console.log("Removing member:", removeConfirmation.member.id);
+      console.log("Removing member from database:", removeConfirmation.member.id);
       
       const response = await fetch(`/api/members/${removeConfirmation.member.id}`, {
         method: "DELETE",
@@ -431,15 +436,21 @@ export default function UserManagement() {
         throw new Error(data.error || "Failed to remove member");
       }
 
+      const result = await response.json();
+      console.log("Member deleted successfully:", result);
+
       toast.success(`${formatMemberName(removeConfirmation.member.surname, removeConfirmation.member.givenName)} has been removed`);
       
+      // Remove from UI
       setMembers(prev => prev.filter(m => m.id !== removeConfirmation.member?.id));
       setRemoveConfirmation({ isOpen: false, member: null });
       setSelectedMember(null);
+      setDeletingMemberId(null);
       
     } catch (error: any) {
       console.error("Error removing member:", error);
       toast.error(error.message || "Failed to remove member");
+      setDeletingMemberId(null);
     }
   };
 
@@ -763,15 +774,24 @@ export default function UserManagement() {
               <div className="flex space-x-3">
                 <button
                   onClick={handleCancelRemove}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  disabled={deletingMemberId !== null}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:bg-gray-100"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmRemove}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  disabled={deletingMemberId !== null}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:bg-red-400"
                 >
-                  Remove Member
+                  {deletingMemberId !== null ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Removing...
+                    </div>
+                  ) : (
+                    "Remove Member"
+                  )}
                 </button>
               </div>
             </div>
@@ -1408,8 +1428,8 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Bottom Navigation */}
-      {!selectedMember && !editingMember && (
+      {/* Bottom Navigation - ONLY SHOW WHEN NO MODALS ARE OPEN */}
+      {!selectedMember && !editingMember && !showAddMemberForm && !showAddOfficerForm && !removeConfirmation.isOpen && (
         <div 
           className="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-[30px] p-4 shadow-2xl z-50"
           style={{
