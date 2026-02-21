@@ -553,21 +553,35 @@ export default function AdminDashboard() {
       >
         <div className="flex justify-center space-x-8 px-4">
           <button
-            onClick={() => router.push('/admin/applicants')}
-            className="flex flex-col items-center text-white transition-colors"
-          >
-            <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-            </svg>
-            <span className="text-xs">Applicants</span>
-          </button>
+              onClick={() => router.push('/admin/applicants')}
+              className="flex flex-col items-center text-white transition-colors"
+            >
+              <svg
+                className="w-6 h-6 mb-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 20h5v-2a4 4 0 00-4-4h-1m-4 6v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2m8-10a4 4 0 100-8 4 4 0 000 8zm6 0a3 3 0 100-6 3 3 0 000 6z"
+                />
+              </svg>
+              <span className="text-xs">Applicants</span>
+            </button>
           <button
             onClick={() => router.push('/admin/messages')}
             className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
           >
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-            </svg>
+            <svg
+                className="w-6 h-6 mb-1"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M1.5 6.75A2.25 2.25 0 013.75 4.5h16.5A2.25 2.25 0 0122.5 6.75v10.5a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 17.25V6.75zm2.31-.75L12 11.19 20.19 6H3.81z" />
+              </svg>
             <span className="text-xs">Email</span>
           </button>
           <button
