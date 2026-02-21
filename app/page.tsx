@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 // Define the user type based on your existing auth system
 interface User {
@@ -26,7 +27,19 @@ const Container = ({ children }: { children: React.ReactNode }) => (
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [showApplicationForm, setShowApplicationForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
+
+  const [applicationData, setApplicationData] = useState({
+    name: "",
+    birthday: "",
+    address: "",
+    parentName: "",
+    email: "",
+    contactNumber: "",
+    facebookName: "",
+  });
 
   // Add ministryStats state for database connection
   const [ministryStats, setMinistryStats] = useState({
@@ -125,6 +138,61 @@ export default function Home() {
         top: 0, 
         behavior: 'smooth' 
       });
+    }
+  };
+
+  const handleApplicationChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setApplicationData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleApplicationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!applicationData.name || !applicationData.birthday || !applicationData.address || 
+        !applicationData.parentName || !applicationData.email || !applicationData.contactNumber) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const response = await fetch("/api/applications", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(applicationData),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to submit application");
+      }
+
+      toast.success("Application submitted successfully! We will review it soon.");
+      
+      // Reset form
+      setApplicationData({
+        name: "",
+        birthday: "",
+        address: "",
+        parentName: "",
+        email: "",
+        contactNumber: "",
+        facebookName: "",
+      });
+      
+      setShowApplicationForm(false);
+    } catch (error: any) {
+      console.error("Error submitting application:", error);
+      toast.error(error.message || "Failed to submit application");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -276,21 +344,6 @@ export default function Home() {
       <div id="mainContent" className="opacity-0 transition-opacity duration-1000">
         {/* Hero Section */}
         <section className="relative text-white min-h-screen flex items-center overflow-hidden">
-          {/* Login and Guest Buttons - Top Right */}
-          <div className="absolute top-6 right-6 z-20 flex gap-2">
-            <button
-              onClick={scrollToLogin}
-              className="bg-white text-blue-600 px-6 py-2 rounded-full font-semibold text-sm hover:bg-gray-100 transition-colors shadow-lg"
-            >
-              Login
-            </button>
-            {/* <button
-              onClick={goToGuestHome}
-              className="bg-blue-800 text-white px-6 py-2 rounded-full font-semibold text-sm hover:bg-blue-900 transition-colors shadow-lg border border-white"
-            >
-              Guest
-            </button> */}
-          </div>
 
           {/* Background with ministry theme */}
           <div 
@@ -315,34 +368,50 @@ export default function Home() {
 
           {/* Content */}
           <Container>
-            <div className="relative max-w-4xl mx-auto text-center py-20" style={{ zIndex: 2 }}>
+            <div className="relative w-full h-full min-h-screen flex flex-col items-center justify-center" style={{ zIndex: 2 }}>
               {/* Logo */}
-              <div className="flex justify-center mb-8">
-                <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center shadow-2xl">
-                  <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex justify-center mb-6 md:mb-8">
+                <div className="w-20 h-20 md:w-24 md:h-24 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center shadow-2xl">
+                  <svg className="w-12 h-12 md:w-16 md:h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                   </svg>
                 </div>
               </div>
 
               {/* Title */}
-              <h1 className="text-5xl md:text-7xl font-bold mb-4 drop-shadow-lg font-serif">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-2 md:mb-4 drop-shadow-lg font-serif text-center">
                 ALTAR SERVERS
               </h1>
-              <h2 className="text-3xl md:text-5xl font-bold text-yellow-400 mb-8 drop-shadow-lg">
+              <h2 className="text-2xl md:text-4xl font-bold text-yellow-400 mb-6 md:mb-8 drop-shadow-lg text-center">
                 MINISTRY MANAGEMENT
               </h2>
               
               {/* Subtitle */}
-              <p className="text-xl md:text-2xl text-blue-100 mb-10 max-w-2xl mx-auto drop-shadow-md">
+              <p className="text-base md:text-lg lg:text-xl text-blue-100 mb-6 md:mb-8 max-w-2xl mx-auto drop-shadow-md text-center px-4">
                 &quot;I have come not to be served, but to serve.&quot; <i>-Matthew 20:28</i>
               </p>
               
               {/* Description */}
-              <p className="text-base md:text-lg text-blue-200 mb-12 max-w-3xl mx-auto leading-relaxed drop-shadow-md">
+              <p className="text-sm md:text-base lg:text-lg text-blue-200 mb-10 md:mb-14 max-w-3xl mx-auto leading-relaxed drop-shadow-md text-center px-4">
                 Comprehensive management system for altar server ministry activities including attendance tracking, 
                 member management, financial records, and scheduling for masses and special events.
               </p>
+
+              {/* Login and Apply Buttons - CENTERED IN MIDDLE */}
+              <div className="flex flex-row gap-4 items-center justify-center mb-8 md:mb-12">
+                <button
+                  onClick={scrollToLogin}
+                  className="bg-white text-blue-600 px-8 py-3 rounded-full font-semibold text-sm md:text-base hover:bg-gray-100 transition-colors shadow-lg hover:shadow-xl"
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => setShowApplicationForm(true)}
+                  className="bg-yellow-400 text-blue-600 px-8 py-3 rounded-full font-semibold text-sm md:text-base hover:bg-yellow-300 transition-colors shadow-lg hover:shadow-xl"
+                >
+                  Apply
+                </button>
+              </div>
             </div>
           </Container>
         </section>
@@ -580,6 +649,173 @@ export default function Home() {
           </Container>
         </section>
       </div>
+
+      {/* Application Form Modal */}
+      {showApplicationForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div 
+              className="p-6 rounded-t-2xl"
+              style={{
+                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+              }}
+            >
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-white">Apply for Ministry</h2>
+                <button
+                  onClick={() => setShowApplicationForm(false)}
+                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
+                  disabled={submitting}
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleApplicationSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={applicationData.name}
+                  onChange={handleApplicationChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter full name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Birthday *
+                </label>
+                <input
+                  type="date"
+                  name="birthday"
+                  value={applicationData.birthday}
+                  onChange={handleApplicationChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Address *
+                </label>
+                <textarea
+                  name="address"
+                  value={applicationData.address}
+                  onChange={handleApplicationChange}
+                  required
+                  disabled={submitting}
+                  rows={3}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Enter complete address"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Parent/Guardian Name *
+                </label>
+                <input
+                  type="text"
+                  name="parentName"
+                  value={applicationData.parentName}
+                  onChange={handleApplicationChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Parent or guardian name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email/Parent Email *
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={applicationData.email}
+                  onChange={handleApplicationChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Contact Number *
+                </label>
+                <input
+                  type="tel"
+                  name="contactNumber"
+                  value={applicationData.contactNumber}
+                  onChange={handleApplicationChange}
+                  required
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="+63 9XX XXX XXXX"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Facebook Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  name="facebookName"
+                  value={applicationData.facebookName}
+                  onChange={handleApplicationChange}
+                  disabled={submitting}
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder="Facebook profile name"
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowApplicationForm(false)}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    background: submitting ? '#93c5fd' : 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                  }}
+                  className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  {submitting ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Submitting...
+                    </div>
+                  ) : (
+                    "Submit Application"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

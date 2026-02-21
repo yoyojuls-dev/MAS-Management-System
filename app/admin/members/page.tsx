@@ -1,4 +1,4 @@
-// app/admin/members/page.tsx - Complete Fixed Version with Working Edit
+// app/admin/members/page.tsx - Complete Fixed Version
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -297,25 +297,39 @@ export default function UserManagement() {
 
     try {
       const formData = new FormData(e.currentTarget);
+      const newEmail = (formData.get('email') as string)?.trim();
+      
+      // If email hasn't changed, don't include it in the update
+      const updateData: any = {
+        surname: formData.get('surname'),
+        givenName: formData.get('givenName'),
+        birthdate: formData.get('birthdate'),
+        parentContact: formData.get('parentContact'),
+        address: formData.get('address'),
+        dateJoined: formData.get('dateJoined'),
+      };
+
+      // Only include email if it's different from current email
+      if (newEmail && newEmail !== editingMember.email) {
+        updateData.email = newEmail;
+      }
       
       const response = await fetch(`/api/members/${editingMember.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          surname: formData.get('surname'),
-          givenName: formData.get('givenName'),
-          email: formData.get('email'),
-          birthdate: formData.get('birthdate'),
-          parentContact: formData.get('parentContact'),
-          address: formData.get('address'),
-          dateJoined: formData.get('dateJoined'),
-        }),
+        body: JSON.stringify(updateData),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        
+        // Handle specific error messages
+        if (errorData.error && errorData.error.includes('email')) {
+          throw new Error("This email address is already being used by another member. Please use a different email.");
+        }
+        
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 

@@ -175,29 +175,29 @@ export default function MemberLogin() {
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-300" />
               </div>
-              <div className="relative flex justify-center text-sm">
+              {/* <div className="relative flex justify-center text-sm">
                 <span className="px-2 bg-white text-gray-500 font-medium">Or</span>
-              </div>
+              </div> */}
             </div>
 
             {/* Guest Login */}
-            <div className="text-center">
+            {/* <div className="text-center">
               <Link 
                 href="/" 
                 className="text-green-600 text-sm font-medium hover:text-green-700 transition-colors"
               >
                 Login as Guest
               </Link>
-            </div>
+            </div> */}
           </div>
         </div>
 
         {/* Demo Credentials Card */}
-        <div className="mt-6 bg-white/10 backdrop-blur-sm rounded-2xl p-4 text-white text-center">
+        {/* <div className="mt-6 bg-white/10 backdrop-blur-sm rounded-2xl p-4 text-white text-center">
           <p className="text-sm font-medium mb-2">Demo Member Account</p>
           <p className="text-xs opacity-90">Email: john.santos@email.com</p>
           <p className="text-xs opacity-90">Password: member123</p>
-        </div>
+        </div> */}
 
         {/* Admin Login Link */}
         <div className="mt-4 text-center">

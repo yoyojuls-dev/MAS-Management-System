@@ -178,14 +178,14 @@ export default function AdminLogin() {
             </div>
 
             {/* Register Link */}
-            <div className="text-center">
+            {/* <div className="text-center">
               <Link 
                 href="/admin/register" 
                 className="text-blue-600 text-sm font-medium hover:text-blue-700 transition-colors"
               >
                 Create New Admin Account
               </Link>
-            </div>
+            </div> */}
           </div>
         </div>
 

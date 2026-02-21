@@ -149,6 +149,24 @@ model ScheduledEmail {
   updatedAt   DateTime @updatedAt
 }
 
+model Application {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  birthday        DateTime
+  address         String
+  parentName      String
+  email           String
+  contactNumber   String
+  facebookName    String?
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  appliedAt       DateTime @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      String?  // Admin ID who reviewed this
+  notes           String?  // Admin notes/feedback
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 // Account model for authentication
 model Account {
   id                 String  @id @default(auto()) @map("_id") @db.ObjectId
