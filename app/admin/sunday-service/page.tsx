@@ -377,7 +377,7 @@ export default function SundayGroupsPage() {
                     ))}
                   </select>
                   {groupList.length === 0 && (
-                    <p className="text-sm text-orange-600 mt-2 font-medium">ℹ️ No groups created yet. Go to "Groups" tab to create one first.</p>
+                    <p className="text-sm text-orange-600 mt-2 font-medium">ℹ️ No groups created yet. Go to &quot;Groups&quot; tab to create one first.</p>
                   )}
                 </div>
 
@@ -496,7 +496,7 @@ export default function SundayGroupsPage() {
                   ))}
                 </select>
                 {groupList.length === 0 && (
-                  <p className="text-sm text-orange-600 mt-2 font-medium">ℹ️ No groups created yet. Go to "Groups" tab to create one first.</p>
+                  <p className="text-sm text-orange-600 mt-2 font-medium">ℹ️ No groups created yet. Go to &quot;Groups&quot; tab to create one first.</p>
                 )}
               </div>
 
