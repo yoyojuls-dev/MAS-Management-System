@@ -1,4 +1,5 @@
 // app/api/admin/register/route.ts - Working version with direct Prisma import
+export const dynamic = 'force-dynamic';
 import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";

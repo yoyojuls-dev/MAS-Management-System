@@ -1,5 +1,6 @@
 // app/components/EmailTemplate.tsx
 // Use this component to generate email HTML with custom content
+export const dynamic = 'force-dynamic';
 
 interface EmailTemplateProps {
   recipientName?: string;

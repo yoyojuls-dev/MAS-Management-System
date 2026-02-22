@@ -1,4 +1,5 @@
 // app/api/ministry/stats/route.ts - Ministry Statistics API (Updated with Correct Schema)
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 

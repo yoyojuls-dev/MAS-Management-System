@@ -1,6 +1,6 @@
 // app/api/admin/messages/send-email/route.ts
 // COMPLETE FILE - COPY AND PASTE ALL OF THIS
-
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import prisma from "@/lib/prismadb";

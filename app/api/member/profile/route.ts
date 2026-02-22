@@ -1,8 +1,9 @@
 // app/api/member/profile/route.ts
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 
-export const dynamic = 'force-dynamic';
+
 
 export async function GET() {
   try {

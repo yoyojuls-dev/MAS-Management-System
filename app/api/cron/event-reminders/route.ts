@@ -1,6 +1,6 @@
 // app/api/cron/event-reminders/route.ts
 // Automated email reminders for upcoming events
-
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import prisma from "@/lib/prismadb";
