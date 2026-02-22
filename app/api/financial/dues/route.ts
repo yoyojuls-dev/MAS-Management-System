@@ -1,4 +1,6 @@
 // app/api/financial/dues/route.ts
+
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
