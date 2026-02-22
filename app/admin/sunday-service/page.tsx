@@ -16,6 +16,12 @@ interface Member {
   givenName: string;
 }
 
+interface GroupSchedule {
+  groupName: string;
+  day: string;
+  time: string;
+}
+
 const DEFAULT_GROUPS: string[] = [];
 
 export default function SundayGroupsPage() {
@@ -24,12 +30,21 @@ export default function SundayGroupsPage() {
 
   const [members, setMembers] = useState<Member[]>([]);
   const [groups, setGroups] = useState<Record<string, string[]>>({});
+  const [schedules, setSchedules] = useState<GroupSchedule[]>([]);
 
-  const [activeTab, setActiveTab] = useState<'groups' | 'members' | 'list'>('groups');
+  const [activeTab, setActiveTab] = useState<'groups' | 'members' | 'schedule' | 'list'>('groups');
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedListGroup, setSelectedListGroup] = useState<string>('');
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+
+  // Schedule form state
+  const [scheduleFormData, setScheduleFormData] = useState({
+    groupName: '',
+    day: 'Sunday',
+    time: '09:00',
+  });
+  const [editingSchedule, setEditingSchedule] = useState<number | null>(null);
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -63,25 +78,32 @@ export default function SundayGroupsPage() {
     if (groups[name]) return toast.error('Group already exists');
     setGroups(prev => ({ ...prev, [name]: [] }));
     setNewGroupName('');
-    toast.success(`Group &quot;${name}&quot; created`);
+    toast.success(`Group "${name}" created`);
   };
 
   const deleteGroup = (name: string) => {
-    if (!confirm(`Delete group &quot;${name}&quot;?`)) return;
+    if (!confirm(`Delete group "${name}"?`)) return;
     setGroups(prev => {
       const copy = { ...prev };
       delete copy[name];
       return copy;
     });
-    toast.success(`Group &quot;${name}&quot; deleted`);
+    // Also delete schedule for this group
+    setSchedules(prev => prev.filter(s => s.groupName !== name));
+    toast.success(`Group "${name}" deleted`);
   };
 
   const addMemberToGroup = (group: string, memberId: string) => {
+    if (!group) return toast.error('Select a group first');
     if (!memberId) return toast.error('Select a member');
     setGroups(prev => {
       const copy = { ...prev };
       const already = copy[group]?.includes(memberId);
       if (!already) copy[group] = [...(copy[group] || []), memberId];
+      else {
+        toast.error('Member already in this group');
+        return prev;
+      }
       return copy;
     });
     setSelectedMemberId('');
@@ -93,7 +115,66 @@ export default function SundayGroupsPage() {
     toast.success('Member removed');
   };
 
+  // Schedule functions
+  const handleScheduleSubmit = () => {
+    if (!scheduleFormData.groupName.trim()) {
+      return toast.error('Enter a group name');
+    }
+    if (!scheduleFormData.day.trim()) {
+      return toast.error('Select a day');
+    }
+    if (!scheduleFormData.time.trim()) {
+      return toast.error('Enter a time');
+    }
+
+    if (editingSchedule !== null) {
+      // Update existing schedule
+      const newSchedules = [...schedules];
+      newSchedules[editingSchedule] = { ...scheduleFormData };
+      setSchedules(newSchedules);
+      toast.success('Schedule updated');
+      setEditingSchedule(null);
+    } else {
+      // Check if schedule already exists for this group
+      const exists = schedules.some(s => s.groupName === scheduleFormData.groupName);
+      if (exists) {
+        return toast.error('Schedule already exists for this group');
+      }
+      // Add new schedule
+      setSchedules([...schedules, { ...scheduleFormData }]);
+      toast.success('Schedule added');
+    }
+
+    setScheduleFormData({
+      groupName: '',
+      day: 'Sunday',
+      time: '09:00',
+    });
+  };
+
+  const editSchedule = (index: number) => {
+    setScheduleFormData(schedules[index]);
+    setEditingSchedule(index);
+  };
+
+  const deleteSchedule = (index: number) => {
+    if (!confirm('Delete this schedule?')) return;
+    setSchedules(schedules.filter((_, i) => i !== index));
+    setEditingSchedule(null);
+    toast.success('Schedule deleted');
+  };
+
+  const cancelEdit = () => {
+    setEditingSchedule(null);
+    setScheduleFormData({
+      groupName: '',
+      day: 'Sunday',
+      time: '09:00',
+    });
+  };
+
   const groupList = Object.keys(groups);
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   if (loading) {
     return (
@@ -150,7 +231,7 @@ export default function SundayGroupsPage() {
         <h2 className="text-2xl font-bold text-gray-900 mb-6">SUNDAY GROUPS</h2>
         
         {/* Tab Buttons */}
-        <div className="flex gap-3 mb-6">
+        <div className="flex gap-2 mb-6 flex-wrap">
           <button
             onClick={() => setActiveTab('groups')}
             style={{
@@ -158,7 +239,7 @@ export default function SundayGroupsPage() {
                 ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
                 : '#f3f4f6'
             }}
-            className={`px-5 py-2 rounded-lg font-semibold transition-all shadow-sm ${
+            className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm ${
               activeTab === 'groups'
                 ? 'text-white'
                 : 'text-gray-600 hover:bg-gray-200'
@@ -173,13 +254,28 @@ export default function SundayGroupsPage() {
                 ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
                 : '#f3f4f6'
             }}
-            className={`px-5 py-2 rounded-lg font-semibold transition-all shadow-sm ${
+            className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm ${
               activeTab === 'members'
                 ? 'text-white'
                 : 'text-gray-600 hover:bg-gray-200'
             }`}
           >
-            Group Members
+            Add Members
+          </button>
+          <button
+            onClick={() => setActiveTab('schedule')}
+            style={{
+              background: activeTab === 'schedule' 
+                ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
+                : '#f3f4f6'
+            }}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm ${
+              activeTab === 'schedule'
+                ? 'text-white'
+                : 'text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Schedule
           </button>
           <button
             onClick={() => setActiveTab('list')}
@@ -188,13 +284,13 @@ export default function SundayGroupsPage() {
                 ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
                 : '#f3f4f6'
             }}
-            className={`px-5 py-2 rounded-lg font-semibold transition-all shadow-sm ${
+            className={`px-4 py-2 rounded-lg font-semibold transition-all shadow-sm text-sm ${
               activeTab === 'list'
                 ? 'text-white'
                 : 'text-gray-600 hover:bg-gray-200'
             }`}
           >
-            Group List
+            View List
           </button>
         </div>
 
@@ -207,7 +303,7 @@ export default function SundayGroupsPage() {
               <input
                 value={newGroupName}
                 onChange={e => setNewGroupName(e.target.value)}
-                placeholder="Group Name"
+                placeholder="Group Name (e.g., Group A, Group B)"
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               <button 
@@ -217,7 +313,7 @@ export default function SundayGroupsPage() {
                 }}
                 className="w-full px-5 py-3 text-white rounded-lg font-semibold hover:opacity-90 transition-opacity"
               >
-                Create
+                Create Group
               </button>
             </div>
 
@@ -258,88 +354,243 @@ export default function SundayGroupsPage() {
           </div>
         )}
 
-        {/* Group Members Tab (renamed from Group List) */}
+        {/* Add Members Tab - ALWAYS shows add member form */}
         {activeTab === 'members' && (
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Members to Group</h3>
 
-            <div className="mb-4 space-y-3">
+            {/* Add Member Form - Always Visible */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 mb-8 border-2 border-blue-200">
+              <h4 className="text-md font-semibold text-gray-900 mb-4">➕ Add New Member</h4>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Select Group *</label>
+                  <select
+                    value={selectedListGroup}
+                    onChange={e => setSelectedListGroup(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Select group...</option>
+                    {groupList.map(g => (
+                      <option key={g} value={g}>{g} ({(groups[g] || []).length} members)</option>
+                    ))}
+                  </select>
+                  {groupList.length === 0 && (
+                    <p className="text-sm text-orange-600 mt-2 font-medium">ℹ️ No groups created yet. Go to "Groups" tab to create one first.</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Select Member *</label>
+                  <select
+                    value={selectedMemberId}
+                    onChange={e => setSelectedMemberId(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Select member to add...</option>
+                    {members.map(m => (
+                      <option key={m.id} value={m.id}>{m.surname}, {m.givenName}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button 
+                  onClick={() => addMemberToGroup(selectedListGroup, selectedMemberId)}
+                  style={{
+                    background: selectedListGroup && selectedMemberId ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#d1d5db'
+                  }}
+                  disabled={!selectedListGroup || !selectedMemberId}
+                  className="w-full px-5 py-3 text-white rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Add Member to Group
+                </button>
+              </div>
+            </div>
+
+            {/* Show All Groups with Members */}
+            <h4 className="text-md font-semibold text-gray-900 mb-4">📋 All Groups Members</h4>
+            
+            {groupList.length === 0 ? (
+              <div className="p-8 text-center bg-gray-50 rounded-lg">
+                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <p className="text-gray-500 mb-3">No groups created yet</p>
+                <button
+                  onClick={() => setActiveTab('groups')}
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Create your first group
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {groupList.map((groupName) => (
+                  <div key={groupName} className="bg-white rounded-lg shadow-sm border-2 border-gray-100 overflow-hidden">
+                    {/* Group Header */}
+                    <div 
+                      className="px-6 py-4"
+                      style={{
+                        background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-lg font-bold text-white">{groupName}</h5>
+                        <span className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold text-white">
+                          {(groups[groupName] || []).length} {(groups[groupName] || []).length === 1 ? 'member' : 'members'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Members */}
+                    {(groups[groupName] || []).length === 0 ? (
+                      <div className="p-6 text-center">
+                        <p className="text-gray-500 text-sm">No members in this group yet</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-200">
+                        {(groups[groupName] || []).map(id => {
+                          const m = members.find(x => x.id === id);
+                          return (
+                            <div key={id} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
+                              <div className="font-medium text-gray-900">
+                                {m ? `${m.surname}, ${m.givenName}` : 'Unknown member'}
+                              </div>
+                              <button 
+                                onClick={() => removeMemberFromGroup(groupName, id)} 
+                                className="text-red-500 font-medium hover:text-red-700 text-sm"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Schedule Tab - NEW */}
+        {activeTab === 'schedule' && (
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              {editingSchedule !== null ? 'Edit Schedule' : 'Add Group Schedule'}
+            </h3>
+
+            <div className="mb-6 space-y-4 bg-blue-50 rounded-xl p-6 border-2 border-blue-200">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Group</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Group Name *</label>
                 <select
-                  value={selectedListGroup}
-                  onChange={e => setSelectedListGroup(e.target.value)}
+                  value={scheduleFormData.groupName}
+                  onChange={e => setScheduleFormData({ ...scheduleFormData, groupName: e.target.value })}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select group...</option>
                   {groupList.map(g => (
-                    <option key={g} value={g}>{g}</option>
+                    <option key={g} value={g}>{g} ({(groups[g] || []).length} members)</option>
                   ))}
                 </select>
+                {groupList.length === 0 && (
+                  <p className="text-sm text-orange-600 mt-2 font-medium">ℹ️ No groups created yet. Go to "Groups" tab to create one first.</p>
+                )}
               </div>
 
-              {selectedListGroup && (
-                <>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Select Member</label>
-                    <select
-                      value={selectedMemberId}
-                      onChange={e => setSelectedMemberId(e.target.value)}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Select member to add...</option>
-                      {members.map(m => (
-                        <option key={m.id} value={m.id}>{m.surname}, {m.givenName}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <button 
-                    onClick={() => addMemberToGroup(selectedListGroup, selectedMemberId)}
-                    style={{
-                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                    }}
-                    className="w-full px-5 py-3 text-white rounded-lg font-semibold hover:opacity-90 transition-opacity"
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Day of Week *</label>
+                  <select
+                    value={scheduleFormData.day}
+                    onChange={e => setScheduleFormData({ ...scheduleFormData, day: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    Add Member
-                  </button>
-                </>
-              )}
-            </div>
+                    <option value="Sunday">Sunday</option>
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                  </select>
+                </div>
 
-            {selectedListGroup && (
-              <div className="mt-6">
-                <h4 className="text-md font-semibold text-gray-900 mb-3">
-                  Members in &lsquo;{selectedListGroup}&rsquo;
-                </h4>
-                <div className="bg-white rounded-lg shadow-sm border-2 border-gray-100 overflow-hidden">
-                  {(groups[selectedListGroup] || []).length === 0 ? (
-                    <div className="p-8 text-center">
-                      <p className="text-gray-500">No members in this group yet</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-gray-200">
-                      {(groups[selectedListGroup] || []).map(id => {
-                        const m = members.find(x => x.id === id);
-                        return (
-                          <div key={id} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
-                            <div className="font-medium text-gray-900">
-                              {m ? `${m.surname}, ${m.givenName}` : 'Unknown member'}
-                            </div>
-                            <button 
-                              onClick={() => removeMemberFromGroup(selectedListGroup, id)} 
-                              className="text-red-500 font-medium hover:text-red-700"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Time *</label>
+                  <input
+                    type="time"
+                    value={scheduleFormData.time}
+                    onChange={e => setScheduleFormData({ ...scheduleFormData, time: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
                 </div>
               </div>
-            )}
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={handleScheduleSubmit}
+                  style={{
+                    background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                  }}
+                  className="flex-1 px-5 py-3 text-white rounded-lg font-semibold hover:opacity-90 transition-opacity"
+                >
+                  {editingSchedule !== null ? 'Update Schedule' : 'Add Schedule'}
+                </button>
+                {editingSchedule !== null && (
+                  <button 
+                    onClick={cancelEdit}
+                    className="flex-1 px-5 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Schedules list */}
+            <h4 className="text-md font-semibold text-gray-900 mb-4">📅 All Schedules</h4>
+            <div className="bg-white rounded-lg shadow-sm border-2 border-gray-100 overflow-hidden">
+              {schedules.length === 0 ? (
+                <div className="p-12 text-center">
+                  <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="text-gray-500">No schedules added yet</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-200">
+                  {schedules.map((schedule, index) => (
+                    <div key={index} className="p-6 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <h5 className="font-semibold text-gray-900">{schedule.groupName}</h5>
+                          <p className="text-sm text-gray-600 mt-1">
+                            📅 {schedule.day} at ⏰ {schedule.time}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => editSchedule(index)}
+                            className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteSchedule(index)}
+                            className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -416,17 +667,15 @@ export default function SundayGroupsPage() {
             )}
           </div>
         )}
-
-        {/* Save Button */}
-        <div className="mt-6 flex justify-end">
+        <div className="mt-8 flex justify-end">
           <button 
-            onClick={() => toast.success('Groups saved successfully!')}
+            onClick={() => toast.success('All changes saved successfully!')}
             style={{
               background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
             }}
-            className="px-6 py-3 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-sm"
+            className="px-8 py-3 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-sm"
           >
-            Save Changes
+            Save All Changes
           </button>
         </div>
       </div>
