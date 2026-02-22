@@ -9,7 +9,7 @@ import prisma from "@/lib/prismadb";
 const createEventReminderEmail = (
   recipientName: string,
   eventTitle: string,
-  eventDate: string,
+  eventDate: string,  // Changed from Date to string
   eventTime: string,
   daysUntil: number,
   location?: string
@@ -500,10 +500,10 @@ export async function GET(request: NextRequest) {
             const htmlContent = createEventReminderEmail(
               `${member.givenName} ${member.surname}`,
               event.title,
-              event.date,
-              event.time || "09:00",
+              event.date.toISOString().split('T')[0],
+              event.startTime || "09:00",
               daysUntil,
-              event.location
+              event.location || undefined
             );
 
             const mailOptions = {
