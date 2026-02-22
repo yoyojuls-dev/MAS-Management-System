@@ -1,0 +1,9 @@
+{
+  "buildCommand": "next build",
+  "crons": [
+    {
+      "path": "/api/cron/event-reminders",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
