@@ -1,4 +1,4 @@
-// app/api/admin/messages/send-email/route.ts
+// app/api/cron/send-scheduled-emails/route.ts
 // COMPLETE FILE - COPY AND PASTE ALL OF THIS
 
 import { NextRequest, NextResponse } from "next/server";
@@ -245,7 +245,7 @@ const createEmailHTML = (
 
             <div class="email-body">
                 <h2>${subject}</h2>
-                <p>Dear ${recipientName},</p>
+                <p>Dear Member,</p>
                 <p>${message}</p>
                 <hr class="divider">
             </div>
@@ -278,119 +278,17 @@ const createEmailHTML = (
   `;
 };
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const body = await request.json();
-    const { memberIds, applicantEmails, subject, message, scheduledFor } = body;
+    console.log("Starting scheduled email cron job...");
 
-    if (!subject || !message) {
-      return NextResponse.json(
-        { error: "Subject and message are required" },
-        { status: 400 }
-      );
-    }
-
-    // Collect all email addresses
-    const recipientEmails: Array<{ email: string; name: string }> = [];
-
-    // Add member emails
-    if (memberIds && memberIds.length > 0) {
-      const members = await prisma.member.findMany({
-        where: {
-          id: {
-            in: memberIds,
-          },
-        },
-        select: {
-          id: true,
-          email: true,
-          givenName: true,
-          surname: true,
-        },
-      });
-
-      for (const member of members) {
-        if (member.email) {
-          recipientEmails.push({
-            email: member.email,
-            name: `${member.givenName} ${member.surname}`,
-          });
-        }
-      }
-    }
-
-    // Add applicant emails
-    if (applicantEmails && applicantEmails.length > 0) {
-      for (const email of applicantEmails) {
-        recipientEmails.push({
-          email: email,
-          name: "Applicant",
-        });
-      }
-    }
-
-    if (recipientEmails.length === 0) {
-      return NextResponse.json(
-        { error: "No valid recipients found" },
-        { status: 400 }
-      );
-    }
-
-    // If scheduled for later, save to database instead of sending
-    if (scheduledFor) {
-      console.log(`Scheduling emails for ${scheduledFor}`);
-
-      try {
-        const scheduledDateTime = new Date(scheduledFor);
-
-        // Validate the scheduled time is in the future
-        if (scheduledDateTime <= new Date()) {
-          return NextResponse.json(
-            { error: "Scheduled time must be in the future" },
-            { status: 400 }
-          );
-        }
-
-        // Save to ScheduledEmail table with email addresses
-        await prisma.scheduledEmail.create({
-          data: {
-            subject: subject,
-            message: message,
-            memberIds: recipientEmails.map((r) => r.email),
-            scheduledFor: scheduledDateTime,
-            status: "PENDING",
-          },
-        });
-
-        const formattedDate = scheduledDateTime.toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        });
-        const formattedTime = scheduledDateTime.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        });
-
-        return NextResponse.json({
-          success: true,
-          message: `Emails scheduled for ${recipientEmails.length} recipient${
-            recipientEmails.length !== 1 ? "s" : ""
-          } on ${formattedDate} at ${formattedTime}`,
-          scheduled: true,
-          recipientCount: recipientEmails.length,
-        });
-      } catch (error) {
-        console.error("Error scheduling emails:", error);
-        return NextResponse.json(
-          { error: "Failed to schedule emails" },
-          { status: 500 }
-        );
-      }
-    }
-
-    // Send immediately
     const emailUser = process.env.EMAIL_USER;
     const emailPassword = process.env.EMAIL_PASSWORD;
 
@@ -399,6 +297,28 @@ export async function POST(request: NextRequest) {
         { error: "Email configuration is missing" },
         { status: 500 }
       );
+    }
+
+    // Get all pending scheduled emails that are due to be sent
+    const now = new Date();
+    const scheduledEmails = await prisma.scheduledEmail.findMany({
+      where: {
+        status: "PENDING",
+        scheduledFor: {
+          lte: now,
+        },
+      },
+    });
+
+    console.log(`Found ${scheduledEmails.length} scheduled emails to send`);
+
+    if (scheduledEmails.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: "No scheduled emails to send at this time",
+        sentCount: 0,
+        failedCount: 0,
+      });
     }
 
     const transporter = nodemailer.createTransport({
@@ -412,44 +332,75 @@ export async function POST(request: NextRequest) {
     let sentCount = 0;
     let failedCount = 0;
 
-    for (const recipient of recipientEmails) {
+    for (const scheduledEmail of scheduledEmails) {
       try {
-        const htmlContent = createEmailHTML(
-          recipient.name,
-          subject,
-          message
-        );
+        // Send to each email in memberIds array
+        for (const email of scheduledEmail.memberIds) {
+          try {
+            const htmlContent = createEmailHTML(
+              "Member",
+              scheduledEmail.subject,
+              scheduledEmail.message
+            );
 
-        const mailOptions = {
-          from: emailUser,
-          to: recipient.email,
-          subject: subject,
-          html: htmlContent,
-          replyTo: emailUser,
-        };
+            const mailOptions = {
+              from: emailUser,
+              to: email,
+              subject: scheduledEmail.subject,
+              html: htmlContent,
+              replyTo: emailUser,
+            };
 
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✓ Email sent to ${recipient.email}`);
-        sentCount++;
+            const info = await transporter.sendMail(mailOptions);
+            console.log(`✓ Scheduled email sent to ${email}`);
+            sentCount++;
+          } catch (error) {
+            console.error(
+              `✗ Failed to send scheduled email to ${email}:`,
+              error
+            );
+            failedCount++;
+          }
+        }
+
+        // Mark entire scheduled message as sent
+        await prisma.scheduledEmail.update({
+          where: { id: scheduledEmail.id },
+          data: {
+            status: "SENT",
+          },
+        });
       } catch (error) {
-        console.error(`✗ Failed to send email to ${recipient.email}:`, error);
+        console.error(`✗ Failed to process scheduled email:`, error);
+
+        // Mark as failed
+        await prisma.scheduledEmail.update({
+          where: { id: scheduledEmail.id },
+          data: { status: "FAILED" },
+        });
+
         failedCount++;
       }
     }
 
+    console.log(
+      `Scheduled email cron job completed: ${sentCount} sent, ${failedCount} failed`
+    );
+
     return NextResponse.json({
       success: true,
-      message: `Emails sent successfully`,
+      message: "Scheduled email cron job completed",
       sentCount,
       failedCount,
-      recipientCount: recipientEmails.length,
     });
   } catch (error) {
-    console.error("Error sending emails:", error);
+    console.error("Error in scheduled email cron job:", error);
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Failed to send emails",
+          error instanceof Error
+            ? error.message
+            : "Failed to process scheduled emails",
       },
       { status: 500 }
     );
