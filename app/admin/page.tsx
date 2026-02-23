@@ -396,7 +396,7 @@ export default function AdminDashboard() {
             }}
             className="flex-1 bg-white/20 backdrop-blur-sm px-4 py-3 rounded-xl border border-white/30 hover:bg-white/30 transition-colors text-white font-semibold text-sm"
           >
-            Applicantions
+            Applications
           </button>
 
           {/* User Management Button */}
