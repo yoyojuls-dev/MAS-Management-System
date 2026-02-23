@@ -1,4 +1,4 @@
-// app/admin/birthdays/page.tsx - Birthdays page for both admins and members
+// app/admin/birthdays/page.tsx - Birthdays page with improved alignment and today's birthday first
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -74,14 +74,30 @@ export default function BirthdaysPage() {
     return age;
   };
 
+  // Check if a date is today
+  const isToday = (date: string): boolean => {
+    const today = new Date();
+    const birthDate = new Date(date);
+    return birthDate.getDate() === today.getDate() && 
+           birthDate.getMonth() === today.getMonth();
+  };
+
   // Filter birthdays for selected month
   const filteredBirthdays = birthdays.filter(person => {
     const birthDate = new Date(person.birthday);
     return birthDate.getMonth() === selectedMonth;
   });
 
-  // Sort filtered birthdays by date
+  // Sort filtered birthdays by date, with today's birthday first
   const sortedFilteredBirthdays = [...filteredBirthdays].sort((a, b) => {
+    const aIsToday = isToday(a.birthday);
+    const bIsToday = isToday(b.birthday);
+    
+    // Today's birthday comes first
+    if (aIsToday && !bIsToday) return -1;
+    if (!aIsToday && bIsToday) return 1;
+    
+    // Otherwise sort by date
     const aDate = new Date(a.birthday);
     const bDate = new Date(b.birthday);
     return aDate.getDate() - bDate.getDate();
@@ -183,46 +199,67 @@ export default function BirthdaysPage() {
           </h3>
           {sortedFilteredBirthdays.length > 0 ? (
             <div className="space-y-3">
-              {sortedFilteredBirthdays.map((person) => (
-                <div 
-                  key={person.id} 
-                  className="flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-xl hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div 
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg"
-                      style={{
-                        background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                      }}
-                    >
-                      {person.name.charAt(0)}
+              {sortedFilteredBirthdays.map((person) => {
+                const todayBirthday = isToday(person.birthday);
+                return (
+                  <div 
+                    key={person.id}
+                    className={`flex items-center justify-between p-4 bg-white border-2 rounded-xl hover:shadow-md transition-shadow ${
+                      todayBirthday 
+                        ? 'border-yellow-400 shadow-md' 
+                        : 'border-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-4 flex-1">
+                      {/* Avatar Circle */}
+                      <div 
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
+                        style={{
+                          background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
+                        }}
+                      >
+                        {person.name.charAt(0)}
+                      </div>
+
+                      {/* Name and Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-gray-900">{person.name}</p>
+                          {todayBirthday && (
+                            <span className="inline-block px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded-full whitespace-nowrap">
+                              🎉 TODAY
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          {new Date(person.birthday).toLocaleDateString('en-US', { 
+                            month: 'long', 
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {person.serviceLevel && (
+                            <span className="inline-block px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">
+                              {person.serviceLevel}
+                            </span>
+                          )}
+                          {person.position && (
+                            <span className="inline-block px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded-full">
+                              {person.position}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">{person.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(person.birthday).toLocaleDateString('en-US', { 
-                          month: 'long', 
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </p>
-                      {person.serviceLevel && (
-                        <span className="inline-block mt-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">
-                          {person.serviceLevel}
-                        </span>
-                      )}
-                      {person.position && (
-                        <span className="inline-block mt-1 px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded-full ml-1">
-                          {person.position}
-                        </span>
-                      )}
+
+                    {/* Cake Emoji - Right Aligned */}
+                    <div className="text-4xl flex-shrink-0 ml-4">
+                      🎂
                     </div>
                   </div>
-                  <div className="text-3xl">
-                    🎂
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="p-12 text-center">
