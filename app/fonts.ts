@@ -1,4 +1,5 @@
 // app/fonts.ts - Separate fonts configuration file
+export const dynamic = 'force-dynamic';
 import { Poppins, Playfair_Display } from "next/font/google";
 
 export const poppins = Poppins({
