@@ -1,6 +1,7 @@
 // app/layout.tsx
 // Ministry of Altar Servers Management System Layout
 
+export const dynamic = 'force-dynamic';
 import "./globals.css";
 import type { Metadata } from "next";
 import { Poppins, Playfair_Display } from "next/font/google";
