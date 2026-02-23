@@ -47,8 +47,8 @@ const formatMemberName = (surname: string, givenName: string) => {
 };
 
 // Generate assignment ID
-const getAssignmentId = (day: string, time: string, month: number, year: number) => {
-  return `${day}-${time}-${month}-${year}`;
+const getAssignmentId = (day: string, time: string, month: number, year: number, memberId: string) => {
+  return `${day}-${time}-${month}-${year}-${memberId}`;
 };
 
 export default function DailyAttendancePage() {
@@ -65,7 +65,9 @@ export default function DailyAttendancePage() {
   const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
   const [selectedDay, setSelectedDay] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<'AM' | 'PM'>('AM');
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showMemberDropdown, setShowMemberDropdown] = useState(false);
   
   // Attendance state
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceRecord>>({});
@@ -104,29 +106,51 @@ export default function DailyAttendancePage() {
     }
   };
 
-  const handleAssignMember = () => {
-    if (!selectedDay || !selectedTime || !selectedMemberId) {
-      toast.error('Please select day, time, and member');
+  // Filter members based on search query
+  const filteredMembers = members.filter(member => {
+    const fullName = formatMemberName(member.surname, member.givenName).toLowerCase();
+    return fullName.includes(searchQuery.toLowerCase());
+  });
+
+  const handleToggleMember = (memberId: string) => {
+    setSelectedMemberIds(prev => {
+      if (prev.includes(memberId)) {
+        return prev.filter(id => id !== memberId);
+      } else {
+        return [...prev, memberId];
+      }
+    });
+  };
+
+  const handleAssignMembers = () => {
+    if (!selectedDay || !selectedTime || selectedMemberIds.length === 0) {
+      toast.error('Please select day, time, and at least one member');
       return;
     }
 
-    const assignmentId = getAssignmentId(selectedDay, selectedTime, selectedMonth, selectedYear);
-    
-    const assignment: Assignment = {
-      day: selectedDay,
-      time: selectedTime,
-      memberId: selectedMemberId,
-      month: selectedMonth,
-      year: selectedYear,
-    };
+    let assignedCount = 0;
+    selectedMemberIds.forEach(memberId => {
+      const assignmentId = getAssignmentId(selectedDay, selectedTime, selectedMonth, selectedYear, memberId);
+      
+      const assignment: Assignment = {
+        day: selectedDay,
+        time: selectedTime,
+        memberId: memberId,
+        month: selectedMonth,
+        year: selectedYear,
+      };
 
-    setAssignments(prev => ({
-      ...prev,
-      [assignmentId]: assignment,
-    }));
+      setAssignments(prev => ({
+        ...prev,
+        [assignmentId]: assignment,
+      }));
+      assignedCount++;
+    });
 
-    setSelectedMemberId('');
-    toast.success('Member assigned successfully!');
+    setSelectedMemberIds([]);
+    setSearchQuery('');
+    setShowMemberDropdown(false);
+    toast.success(`${assignedCount} member${assignedCount !== 1 ? 's' : ''} assigned successfully!`);
   };
 
   const handleRemoveAssignment = (assignmentId: string) => {
@@ -340,9 +364,7 @@ export default function DailyAttendancePage() {
             
             {getAllAssignmentsForMonth().length === 0 ? (
               <div className="p-12 text-center bg-gray-50 rounded-lg">
-                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
+                <div className="text-6xl mb-4">📅</div>
                 <p className="text-gray-500 mb-4">No assignments for {MONTHS[selectedMonth]}</p>
                 <button
                   onClick={() => setActiveTab('assignment')}
@@ -409,7 +431,7 @@ export default function DailyAttendancePage() {
         {activeTab === 'assignment' && (
           <div className="space-y-6">
             <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Assign Member to Daily Mass</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Assign Members to Daily Mass</h3>
               
               <div className="space-y-4">
                 <div>
@@ -450,30 +472,90 @@ export default function DailyAttendancePage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Select Member</label>
-                  <select
-                    value={selectedMemberId}
-                    onChange={(e) => setSelectedMemberId(e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Choose a member...</option>
-                    {members.map(member => (
-                      <option key={member.id} value={member.id}>
-                        {formatMemberName(member.surname, member.givenName)}
-                      </option>
-                    ))}
-                  </select>
+                <div className="relative">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Search & Select Members</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search members..."
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setShowMemberDropdown(true);
+                      }}
+                      onFocus={() => setShowMemberDropdown(true)}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {selectedMemberIds.length > 0 && (
+                      <span className="absolute right-3 top-3 bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
+                        {selectedMemberIds.length} selected
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Dropdown for member selection */}
+                  {showMemberDropdown && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border-2 border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {filteredMembers.length > 0 ? (
+                        filteredMembers.map(member => (
+                          <label
+                            key={member.id}
+                            className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedMemberIds.includes(member.id)}
+                              onChange={() => handleToggleMember(member.id)}
+                              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                            />
+                            <span className="ml-3 text-sm font-medium text-gray-900">
+                              {formatMemberName(member.surname, member.givenName)}
+                            </span>
+                          </label>
+                        ))
+                      ) : (
+                        <div className="px-4 py-3 text-center text-gray-500 text-sm">
+                          No members found
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
+                {/* Selected Members Tags */}
+                {selectedMemberIds.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">Selected Members</label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedMemberIds.map(memberId => {
+                        const member = members.find(m => m.id === memberId);
+                        return (
+                          <div
+                            key={memberId}
+                            className="bg-blue-100 text-blue-800 text-sm px-3 py-1 rounded-full flex items-center gap-2"
+                          >
+                            <span>{member ? formatMemberName(member.surname, member.givenName) : 'Unknown'}</span>
+                            <button
+                              onClick={() => handleToggleMember(memberId)}
+                              className="text-blue-600 hover:text-blue-800 font-bold"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <button
-                  onClick={handleAssignMember}
+                  onClick={handleAssignMembers}
                   style={{
                     background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
                   }}
                   className="w-full py-3 text-white rounded-lg font-semibold hover:opacity-90 transition-opacity"
                 >
-                  Assign Member
+                  Assign {selectedMemberIds.length} Member{selectedMemberIds.length !== 1 ? 's' : ''}
                 </button>
               </div>
             </div>
@@ -503,22 +585,18 @@ export default function DailyAttendancePage() {
                         </div>
                       ) : (
                         <div className="divide-y divide-gray-200">
-                          {TIMES.map(time => {
-                            const assignment = dayAssignments.find(([id, a]) => a.time === time);
-                            if (!assignment) return null;
-                            
-                            const [assignmentId, assignmentData] = assignment;
-                            const member = members.find(m => m.id === assignmentData.memberId);
+                          {dayAssignments.map(([assignmentId, assignment]) => {
+                            const member = members.find(m => m.id === assignment.memberId);
                             
                             return (
-                              <div key={time} className="px-4 py-3 flex items-center justify-between">
+                              <div key={assignmentId} className="px-4 py-3 flex items-center justify-between">
                                 <div className="flex items-center space-x-3">
                                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                    time === 'AM' 
+                                    assignment.time === 'AM' 
                                       ? 'bg-yellow-100 text-yellow-800' 
                                       : 'bg-purple-100 text-purple-800'
                                   }`}>
-                                    {time}
+                                    {assignment.time}
                                   </span>
                                   <span className="text-sm font-medium text-gray-900">
                                     {member ? formatMemberName(member.surname, member.givenName) : 'Unknown'}
