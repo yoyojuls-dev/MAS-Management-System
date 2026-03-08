@@ -1,55 +1,41 @@
-// app/admin/members/page.tsx - Updated with hidden navigation during modal
+/* app/admin/monthly-meeting/page.tsx */
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import Image from "next/image";
-import { useRouter } from "next/navigation";
-import toast from "react-hot-toast";
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import Link from 'next/link';
+import { toast } from 'react-hot-toast';
 
 interface Member {
   id: string;
   surname: string;
   givenName: string;
-  email: string;
-  birthdate: string;
-  age: number;
-  address: string;
-  parentContact: string;
-  dateJoined: string;
-  yearsOfService: number;
-  serviceLevel: 'Neophyte' | 'Junior' | 'Senior Server';
   memberStatus: string;
-  createdAt: string;
 }
 
-interface Officer {
-  id: string;
+interface MonthlyAttendance {
   memberId: string;
-  memberName: string;
-  position: string;
-  email: string;
-  contactNumber: string;
-  dateAppointed: string;
-  isActive: boolean;
+  present: boolean;
+  absent: boolean;
+  excused: boolean;
+  excuseLetter: string;
+  dueChecked: boolean;
+  dueAmount: number;
 }
 
-interface Admin {
+interface Expense {
   id: string;
-  adminId: string;
-  name: string;
-  email: string;
-  position: string;
-  contactNumber: string;
-  createdAt: string;
+  description: string;
+  amount: number;
+  reason: string;
 }
 
-interface RemoveConfirmation {
-  isOpen: boolean;
-  member: Member | null;
-}
+const MONTHS = [
+  'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+  'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+];
 
 // Helper function to format name as "Surname, I."
 const formatMemberName = (surname: string, givenName: string) => {
@@ -60,701 +46,828 @@ const formatMemberName = (surname: string, givenName: string) => {
   return `${surname}, ${initials}.`;
 };
 
-// Helper function to get full name
-const getFullName = (surname: string, givenName: string) => {
-  return `${givenName} ${surname}`;
-};
-
-type TabType = 'members' | 'officers' | 'admins';
-
-const OFFICER_POSITIONS = [
-  'President',
-  'Vice President', 
-  'Secretary',
-  'Assistant Secretary',
-  'Treasurer',
-  'Assistant Treasurer',
-  'Auditor',
-  'Worship Committee',
-  'Social Action Committee',
-  'Social Media Committee',
-  'Formation Committee',
-  'Morning Cluster Head',
-  'Afternoon Cluster Head',
-  'Leader'
-];
-
-export default function UserManagement() {
+export default function MonthlyMeetingPage() {
+  const { data: session, status } = useSession();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('members');
+  
   const [members, setMembers] = useState<Member[]>([]);
-  const [officers, setOfficers] = useState<Officer[]>([]);
-  const [admins, setAdmins] = useState<Admin[]>([]);
-  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const [showAddMemberForm, setShowAddMemberForm] = useState(false);
-  const [showAddOfficerForm, setShowAddOfficerForm] = useState(false);
-  const [removeConfirmation, setRemoveConfirmation] = useState<RemoveConfirmation>({
-    isOpen: false,
-    member: null
-  });
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [memberFormData, setMemberFormData] = useState({
-    surname: "",
-    givenName: "",
-    birthday: "",
-    address: "",
-    parentContact: "",
-    dateOfInvestiture: "",
-    username: "",
-    password: "",
-    confirmPassword: "",
-    email: "",
-  });
-  const [officerFormData, setOfficerFormData] = useState({
-    memberId: "",
-    position: "",
-    dateAppointed: new Date().toISOString().split('T')[0],
-  });
+  const [attendance, setAttendance] = useState<Record<string, MonthlyAttendance>>({});
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [isLoading, setIsLoading] = useState(true);
+  const [showExcuseModal, setShowExcuseModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<string | null>(null);
+  const [excuseText, setExcuseText] = useState('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [activeTab, setActiveTab] = useState<'attendance' | 'financial' | 'expenses'>('attendance');
+  const [showDateTimeEditor, setShowDateTimeEditor] = useState(false);
+  const [meetingDate, setMeetingDate] = useState('');
+  const [meetingTime, setMeetingTime] = useState('12:00');
+  const [meetingDay, setMeetingDay] = useState(1);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', reason: '' });
 
-  // Check if any modal is open to hide navigation
-  const isModalOpen = selectedMember !== null || showAddMemberForm || showAddOfficerForm || removeConfirmation.isOpen;
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const isCurrentMonth = selectedMonth === currentMonth && selectedYear === currentYear;
 
-  const loadMembers = useCallback(async () => {
+  // Calculate first Sunday of the selected month
+  const calculateFirstSunday = (year: number, month: number) => {
+    const firstDay = new Date(year, month, 1);
+    const dayOfWeek = firstDay.getDay();
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    return 1 + daysUntilSunday;
+  };
+
+  // Initialize meeting date when month/year changes
+  useEffect(() => {
+    const firstSundayDay = calculateFirstSunday(selectedYear, selectedMonth);
+    const formattedDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(firstSundayDay).padStart(2, '0')}`;
+    
+    setMeetingDate(formattedDate);
+    setMeetingDay(firstSundayDay);
+    setMeetingTime('12:00');
+  }, [selectedMonth, selectedYear]);
+
+  // Update meeting day when date changes
+  useEffect(() => {
+    if (meetingDate) {
+      const date = new Date(meetingDate);
+      setMeetingDay(date.getDate());
+    }
+  }, [meetingDate]);
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      if (session?.user?.role !== 'ADMIN' && session?.user?.userType !== 'ADMIN') {
+        router.push('/member/dashboard');
+        return;
+      }
+      fetchMembers();
+    } else if (status === 'unauthenticated') {
+      router.push('/admin/login');
+    }
+  }, [status, session, router]);
+
+  useEffect(() => {
+    if (members.length > 0) {
+      fetchAttendance();
+    }
+  }, [selectedMonth, selectedYear, members]);
+
+  const fetchMembers = async () => {
     try {
-      console.log("Loading members from API...");
-      const response = await fetch("/api/members?status=ACTIVE");
+      const response = await fetch('/api/members?status=ACTIVE');
       
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
+        throw new Error('Failed to fetch members');
       }
       
       const data = await response.json();
-      console.log("Members loaded:", data);
+      setMembers(data);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error fetching members:', error);
+      toast.error('Failed to load members');
+      setIsLoading(false);
+    }
+  };
+
+  const fetchAttendance = async () => {
+    try {
+      const response = await fetch(`/api/attendance/monthly?month=${selectedMonth}&year=${selectedYear}`);
       
-      // Map members data and add calculated fields
-      const membersWithCalculatedFields = data.map((member: any) => {
-        const age = member.birthdate ? calculateAge(member.birthdate) : 0;
-        const yearsOfService = member.dateJoined ? calculateYearsOfService(member.dateJoined) : 0;
+      if (!response.ok) {
+        throw new Error('Failed to fetch attendance');
+      }
+      
+      const data = await response.json();
+      
+      const initialAttendance: Record<string, MonthlyAttendance> = {};
+      members.forEach(member => {
+        const existingData = data.find((a: any) => a.memberId === member.id);
         
-        return {
-          ...member,
-          age,
-          yearsOfService,
-          serviceLevel: member.serverLevel || determineServiceLevel(yearsOfService)
+        initialAttendance[member.id] = existingData || {
+          memberId: member.id,
+          present: false,
+          absent: false,
+          excused: false,
+          excuseLetter: '',
+          dueChecked: false,
+          dueAmount: 0,
         };
       });
       
-      setMembers(membersWithCalculatedFields);
+      setAttendance(initialAttendance);
     } catch (error) {
-      console.error("Error loading members:", error);
-      toast.error("Failed to load members from database");
-      setMembers([]);
-    }
-  }, []);
-
-  const loadOfficers = useCallback(async () => {
-    setOfficers([]);
-  }, []);
-
-  const loadAdmins = useCallback(async () => {
-    setAdmins([]);
-  }, []);
-
-  const loadData = useCallback(async () => {
-    await Promise.all([
-      loadMembers(),
-      loadOfficers(),
-      loadAdmins()
-    ]);
-    setLoading(false);
-  }, [loadMembers, loadOfficers, loadAdmins]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const calculateAge = (birthday: string): number => {
-    const today = new Date();
-    const birthDate = new Date(birthday);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    return age;
-  };
-
-  const calculateYearsOfService = (dateOfInvestiture: string): number => {
-    const today = new Date();
-    const investitureDate = new Date(dateOfInvestiture);
-    let years = today.getFullYear() - investitureDate.getFullYear();
-    const monthDiff = today.getMonth() - investitureDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < investitureDate.getDate())) {
-      years--;
-    }
-    return Math.max(0, years);
-  };
-
-  const determineServiceLevel = (yearsOfService: number): 'Neophyte' | 'Junior' | 'Senior Server' => {
-  if (yearsOfService >= 1 && yearsOfService <= 2) return 'Neophyte';
-  if (yearsOfService >= 3 && yearsOfService <= 4) return 'Junior';
-  if (yearsOfService >= 5) return 'Senior Server';
-  return 'Neophyte'; // Default for 0 years
-};
-
-  const getServiceLevelAbbreviation = (level: string): string => {
-  switch (level) {
-    case 'NEOPHYTE':
-      return 'NEO';
-    case 'JUNIOR':
-      return 'JUN';
-    case 'Senior Server':
-      return 'SEN';
-    default: return 'SEN';
-  }
-};
-
-  const handleMemberSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!memberFormData.surname || !memberFormData.givenName || !memberFormData.birthday || !memberFormData.address || 
-        !memberFormData.parentContact || !memberFormData.dateOfInvestiture || 
-        !memberFormData.username || !memberFormData.password) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-
-    if (memberFormData.password !== memberFormData.confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-
-    if (memberFormData.password.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      console.log("Creating member via API...");
+      console.error('Error fetching attendance:', error);
       
-      const response = await fetch("/api/members", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const initialAttendance: Record<string, MonthlyAttendance> = {};
+      members.forEach(member => {
+        initialAttendance[member.id] = {
+          memberId: member.id,
+          present: false,
+          absent: false,
+          excused: false,
+          excuseLetter: '',
+          dueChecked: false,
+          dueAmount: 0,
+        };
+      });
+      
+      setAttendance(initialAttendance);
+    }
+  };
+
+  const handlePresentChange = (memberId: string) => {
+    if (!isCurrentMonth) return;
+    
+    setAttendance(prev => ({
+      ...prev,
+      [memberId]: {
+        ...prev[memberId],
+        present: !prev[memberId]?.present,
+        absent: false,
+      }
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleAbsentChange = (memberId: string) => {
+    if (!isCurrentMonth) return;
+    
+    setAttendance(prev => ({
+      ...prev,
+      [memberId]: {
+        ...prev[memberId],
+        absent: !prev[memberId]?.absent,
+        present: false,
+      }
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleExcusedChange = (memberId: string) => {
+    if (!isCurrentMonth) return;
+    
+    setAttendance(prev => ({
+      ...prev,
+      [memberId]: {
+        ...prev[memberId],
+        excused: !prev[memberId]?.excused,
+      }
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleDueChange = (memberId: string) => {
+    if (!isCurrentMonth) return;
+    
+    setAttendance(prev => ({
+      ...prev,
+      [memberId]: {
+        ...prev[memberId],
+        dueChecked: !prev[memberId]?.dueChecked,
+        dueAmount: !prev[memberId]?.dueChecked ? 20 : 0,
+      }
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleDueAmountChange = (memberId: string, amount: string) => {
+    if (!isCurrentMonth) return;
+    
+    const numAmount = parseFloat(amount) || 0;
+    
+    setAttendance(prev => ({
+      ...prev,
+      [memberId]: {
+        ...prev[memberId],
+        dueAmount: numAmount,
+        dueChecked: numAmount >= 20 ? true : prev[memberId]?.dueChecked,
+      }
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const openExcuseModal = (memberId: string) => {
+    setSelectedMember(memberId);
+    setExcuseText(attendance[memberId]?.excuseLetter || '');
+    setShowExcuseModal(true);
+  };
+
+  const saveExcuseLetter = () => {
+    if (selectedMember) {
+      setAttendance(prev => ({
+        ...prev,
+        [selectedMember]: {
+          ...prev[selectedMember],
+          excuseLetter: excuseText,
+        }
+      }));
+      setHasUnsavedChanges(true);
+    }
+    setShowExcuseModal(false);
+    setSelectedMember(null);
+    setExcuseText('');
+  };
+
+  const handleAddExpense = () => {
+    if (!expenseForm.description || !expenseForm.amount || !expenseForm.reason) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+
+    const newExpense: Expense = {
+      id: Date.now().toString(),
+      description: expenseForm.description,
+      amount: parseFloat(expenseForm.amount),
+      reason: expenseForm.reason,
+    };
+
+    setExpenses([...expenses, newExpense]);
+    setExpenseForm({ description: '', amount: '', reason: '' });
+    setShowExpenseForm(false);
+    toast.success('Expense added successfully!');
+    setHasUnsavedChanges(true);
+  };
+
+  const handleDeleteExpense = (id: string) => {
+    setExpenses(expenses.filter(exp => exp.id !== id));
+    toast.success('Expense deleted successfully!');
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSaveAttendance = async () => {
+    try {
+      const response = await fetch('/api/attendance/monthly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          surname: memberFormData.surname,
-          givenName: memberFormData.givenName,
-          birthday: memberFormData.birthday,
-          address: memberFormData.address,
-          parentContact: memberFormData.parentContact,
-          dateOfInvestiture: memberFormData.dateOfInvestiture,
-          username: memberFormData.username,
-          password: memberFormData.password,
-          email: memberFormData.email || `${memberFormData.username}@ministry.local`,
+          month: selectedMonth,
+          year: selectedYear,
+          attendance: Object.values(attendance),
         }),
       });
-
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        throw new Error('Failed to save attendance');
       }
-
-      const data = await response.json();
-      toast.success(`Member created successfully!`);
-      console.log("Member created successfully:", data.member);
       
-      await loadMembers();
-      
-      setShowAddMemberForm(false);
-      setMemberFormData({
-        surname: "",
-        givenName: "",
-        birthday: "",
-        address: "",
-        parentContact: "",
-        dateOfInvestiture: "",
-        username: "",
-        password: "",
-        confirmPassword: "",
-        email: "",
-      });
-      
-    } catch (error: any) {
-      console.error("Error creating member:", error);
-      toast.error(error.message || "Failed to create member");
-    } finally {
-      setSubmitting(false);
+      toast.success('Attendance saved successfully!');
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      toast.error('Failed to save attendance');
     }
   };
 
-  const handleOfficerSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!officerFormData.memberId || !officerFormData.position) {
-      toast.error("Please select a member and position");
-      return;
-    }
+  const handleSaveMeetingDateTime = () => {
+    const date = new Date(meetingDate);
+    const day = date.getDate();
+    setMeetingDay(day);
+    toast.success(`Meeting set for ${MONTHS[selectedMonth]} ${day} at ${meetingTime}`);
+    setShowDateTimeEditor(false);
+  };
 
-    const existingOfficer = officers.find(officer => 
-      officer.position === officerFormData.position && officer.isActive
+  const getTotals = () => {
+    const attendanceValues = Object.values(attendance);
+    return {
+      present: attendanceValues.filter(a => a.present).length,
+      absent: attendanceValues.filter(a => a.absent).length,
+      excused: attendanceValues.filter(a => a.excused).length,
+      duesPaid: attendanceValues.filter(a => a.dueChecked).length,
+      totalAmount: attendanceValues.reduce((sum, a) => sum + (a.dueAmount || 0), 0),
+    };
+  };
+
+  const getExpensesTotals = () => {
+    return expenses.reduce((sum, exp) => sum + exp.amount, 0);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+      </div>
     );
-    
-    if (existingOfficer) {
-      toast.error(`Position "${officerFormData.position}" is already assigned to ${existingOfficer.memberName}`);
-      return;
-    }
+  }
 
-    const memberIsOfficer = officers.find(officer => 
-      officer.memberId === officerFormData.memberId && officer.isActive
-    );
-    
-    if (memberIsOfficer) {
-      toast.error(`This member is already assigned as ${memberIsOfficer.position}`);
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const selectedMember = members.find(member => member.id === officerFormData.memberId);
-      if (!selectedMember) {
-        throw new Error("Selected member not found");
-      }
-
-      const newOfficer: Officer = {
-        id: `officer-${Date.now()}`,
-        memberId: officerFormData.memberId,
-        memberName: formatMemberName(selectedMember.surname, selectedMember.givenName),
-        position: officerFormData.position,
-        email: selectedMember.email,
-        contactNumber: selectedMember.parentContact,
-        dateAppointed: officerFormData.dateAppointed,
-        isActive: true
-      };
-
-      setOfficers([...officers, newOfficer]);
-      toast.success(`${formatMemberName(selectedMember.surname, selectedMember.givenName)} appointed as ${officerFormData.position}!`);
-      
-      setShowAddOfficerForm(false);
-      setOfficerFormData({
-        memberId: "",
-        position: "",
-        dateAppointed: new Date().toISOString().split('T')[0],
-      });
-      
-    } catch (error: any) {
-      console.error("Error appointing officer:", error);
-      toast.error(error.message || "Failed to appoint officer");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleRemoveClick = (member: Member) => {
-    setRemoveConfirmation({
-      isOpen: true,
-      member: member
-    });
-  };
-
-  const handleConfirmRemove = async () => {
-    if (!removeConfirmation.member) return;
-
-    try {
-      console.log("Removing member:", removeConfirmation.member.id);
-      
-      const response = await fetch(`/api/members/${removeConfirmation.member.id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to remove member");
-      }
-
-      toast.success(`${formatMemberName(removeConfirmation.member.surname, removeConfirmation.member.givenName)} has been removed`);
-      
-      setMembers(prev => prev.filter(m => m.id !== removeConfirmation.member?.id));
-      setRemoveConfirmation({ isOpen: false, member: null });
-      
-    } catch (error: any) {
-      console.error("Error removing member:", error);
-      toast.error(error.message || "Failed to remove member");
-    }
-  };
-
-  const handleCancelRemove = () => {
-    setRemoveConfirmation({ isOpen: false, member: null });
-  };
-
-  const handleMemberChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setMemberFormData({
-      ...memberFormData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleOfficerChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setOfficerFormData({
-      ...officerFormData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const removeOfficer = (officerId: string) => {
-    const officer = officers.find(o => o.id === officerId);
-    if (officer) {
-      setOfficers(officers.filter(o => o.id !== officerId));
-      toast.success(`${officer.memberName} removed from ${officer.position}`);
-    }
-  };
-
-  const handleBackClick = () => {
-    router.push('/admin');
-  };
-
-  const getAvailableMembers = () => {
-    const activeOfficerMemberIds = officers.filter(o => o.isActive).map(o => o.memberId);
-    return members.filter(member => 
-      member.memberStatus === 'ACTIVE' && 
-      !activeOfficerMemberIds.includes(member.id)
-    );
-  };
-
-  const getAvailablePositions = () => {
-    const takenPositions = officers.filter(o => o.isActive).map(o => o.position);
-    return OFFICER_POSITIONS.filter(position => !takenPositions.includes(position));
-  };
-
-  const renderTabContent = () => {
-    if (loading) {
-      return (
-        <div className="p-12 text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      );
-    }
-
-    switch (activeTab) {
-      case 'members':
-        return (
-          <div className="space-y-2">
-            {members.length === 0 ? (
-              <div className="p-12 text-center">
-                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197v0M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                <p className="text-gray-500 mb-4">No members found in database</p>
-                <button
-                  onClick={() => setShowAddMemberForm(true)}
-                  className="text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  Add your first member
-                </button>
-              </div>
-            ) : (
-              members.map((member) => (
-                <div 
-                  key={member.id} 
-                  className="bg-white p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() => setSelectedMember(member)}
-                >
-                  <div className="grid grid-cols-4 gap-4 text-sm">
-                    <div className="font-medium text-gray-900">
-                      {formatMemberName(member.surname, member.givenName)}
-                    </div>
-                    <div className="text-gray-600">
-                      {new Date(member.birthdate).toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric' 
-                      })}
-                    </div>
-                    <div className="text-gray-600">{member.age || 0}</div>
-                    <div>
-                      <span 
-                        className="inline-block px-2 py-1 text-xs font-medium text-white rounded"
-                        style={{
-                          background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                        }}
-                      >
-                        {getServiceLevelAbbreviation(member.serviceLevel)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        );
-      
-      case 'officers':
-        return (
-          <div className="space-y-2">
-            {officers.filter(officer => officer.isActive).map((officer) => (
-              <div key={officer.id} className="bg-white p-4 border-b border-gray-100 hover:bg-gray-50">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="font-medium text-gray-900">
-                    {officer.memberName}
-                    <div className="text-xs text-gray-500">{officer.position}</div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-gray-600">{officer.contactNumber}</div>
-                    <button
-                      onClick={() => removeOfficer(officer.id)}
-                      className="text-red-500 hover:text-red-700 text-xs"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {officers.filter(officer => officer.isActive).length === 0 && (
-              <div className="p-12 text-center">
-                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <p className="text-gray-500 mb-4">No officers appointed yet</p>
-                <button
-                  onClick={() => setShowAddOfficerForm(true)}
-                  className="text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  Appoint your first officer
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      
-      case 'admins':
-        return (
-          <div className="space-y-2">
-            {admins.map((admin) => (
-              <div key={admin.id} className="bg-white p-4 border-b border-gray-100">
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div className="font-medium text-gray-900">
-                    {admin.name}
-                    <div className="text-xs text-gray-500">{admin.adminId}</div>
-                  </div>
-                  <div className="text-gray-600">{admin.position}</div>
-                  <div className="text-gray-600 text-sm">{admin.contactNumber}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      
-      default:
-        return null;
-    }
-  };
-
-  const getTabHeaders = () => {
-    switch (activeTab) {
-      case 'members':
-        return ['Name', 'Bday', 'Age', 'Level'];
-      case 'officers':
-        return ['Officers', 'Contact Number'];
-      case 'admins':
-        return ['Admins', 'Position', 'Contact'];
-      default:
-        return [];
-    }
-  };
-
-  const getAddButtonText = () => {
-    switch (activeTab) {
-      case 'members':
-        return '+ Members';
-      case 'officers':
-        return '+ Officer';
-      case 'admins':
-        return '+ Admin';
-      default:
-        return '+ Add';
-    }
-  };
-
-  const handleAddButtonClick = () => {
-    switch (activeTab) {
-      case 'members':
-        setShowAddMemberForm(true);
-        break;
-      case 'officers':
-        setShowAddOfficerForm(true);
-        break;
-      case 'admins':
-        toast("Add admin functionality coming soon!", {
-          icon: '💼',
-          duration: 3000,
-        });
-        break;
-    }
-  };
+  const totals = getTotals();
+  const expensesTotals = getExpensesTotals();
 
   return (
-    <div 
-      className="min-h-screen pb-24"
-      style={{
-        background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-      }}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 pb-24">
       {/* Blue Header with Back Button and Logo */}
-      <div className="px-6 py-6">
+      <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-blue-700 px-6 py-4">
         <div className="flex items-center justify-between">
-          <button
-            onClick={handleBackClick}
-            className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center hover:bg-white/30 transition-colors"
-          >
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/admin" className="text-white">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-          </button>
+          </Link>
           <div className="relative w-16 h-16">
             <Image
               src="/images/MAS LOGO.png"
-              alt="Ministry of Altar Servers Logo"
+              alt="MAS Logo"
               fill
               sizes="64px"
               className="object-contain"
-              priority
             />
           </div>
         </div>
       </div>
 
-      {/* White Content Area */}
-      <div 
-        className="bg-white min-h-screen px-6 py-6"
-        style={{
-          borderRadius: '30px 30px 0 0',
-          marginTop: '20px'
-        }}
-      >
-        {/* Action Bar with Tabs */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
+      {/* White Content Card */}
+      <div className="bg-white rounded-t-[2rem] mt-4 min-h-screen px-6 py-6">
+        {/* Header with Tab Icons */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            {/* Attendance Tab */}
             <button
-              onClick={() => setActiveTab('members')}
-              style={{
-                background: activeTab === 'members' 
-                  ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
-                  : '#f3f4f6'
-              }}
-              className="w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm"
+              onClick={() => setActiveTab('attendance')}
+              className={`p-3 rounded-xl transition-all ${
+                activeTab === 'attendance'
+                  ? 'bg-blue-700'
+                  : 'bg-white border-2 border-blue-700'
+              }`}
             >
-              <svg className={`w-5 h-5 ${activeTab === 'members' ? 'text-white' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <svg 
+                className={`w-6 h-6 ${activeTab === 'attendance' ? 'text-white' : 'text-blue-700'}`}
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </button>
+            
+            {/* Financial Tab */}
             <button
-              onClick={() => setActiveTab('officers')}
-              style={{
-                background: activeTab === 'officers' 
-                  ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
-                  : '#f3f4f6'
-              }}
-              className="w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm"
+              onClick={() => setActiveTab('financial')}
+              className={`p-3 rounded-xl transition-all ${
+                activeTab === 'financial'
+                  ? 'bg-blue-700'
+                  : 'bg-white border-2 border-blue-700'
+              }`}
             >
-              <svg className={`w-5 h-5 ${activeTab === 'officers' ? 'text-white' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197v0M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              <svg 
+                className={`w-6 h-6 ${activeTab === 'financial' ? 'text-white' : 'text-blue-700'}`}
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </button>
+
+            {/* Expenses Tab */}
             <button
-              onClick={() => setActiveTab('admins')}
-              style={{
-                background: activeTab === 'admins' 
-                  ? 'linear-gradient(135deg, #4169E1 0%, #000080 100%)' 
-                  : '#f3f4f6'
-              }}
-              className="w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm"
+              onClick={() => setActiveTab('expenses')}
+              className={`p-3 rounded-xl transition-all ${
+                activeTab === 'expenses'
+                  ? 'bg-blue-700'
+                  : 'bg-white border-2 border-blue-700'
+              }`}
             >
-              <svg className={`w-5 h-5 ${activeTab === 'admins' ? 'text-white' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              <svg 
+                className={`w-6 h-6 ${activeTab === 'expenses' ? 'text-white' : 'text-blue-700'}`}
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3v3m-6-6v6a2 2 0 002 2h10a2 2 0 002-2v-6m-9-3h3m-3 0a2 2 0 00-2 2v2a2 2 0 002 2h3a2 2 0 002-2v-2a2 2 0 00-2-2m-3 0V5a2 2 0 012-2h3a2 2 0 012 2v2" />
               </svg>
             </button>
           </div>
-
+          
+          {/* Set Monthly Meeting Button */}
           <button
-            onClick={handleAddButtonClick}
-            style={{
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-            }}
-            className="text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center shadow-sm"
+            onClick={() => setShowDateTimeEditor(true)}
+            className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
           >
-            {getAddButtonText()}
+            <span className="font-medium">Set Monthly Meeting</span>
+            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
           </button>
         </div>
 
-        {/* Table Headers */}
-        <div className="bg-gray-50 px-4 py-3 border-b-2 border-gray-200 rounded-t-lg mb-2">
-          <div className={`grid gap-4 text-xs font-bold text-gray-700 uppercase tracking-wider ${
-            activeTab === 'officers' ? 'grid-cols-2' : 
-            activeTab === 'admins' ? 'grid-cols-3' :
-            'grid-cols-4'
-          }`}>
-            {getTabHeaders().map((header, index) => (
-              <div key={index}>{header}</div>
+        {/* Attendance Title */}
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">ATTENDANCE {selectedYear}</h2>
+
+        {/* Month Selector with Date */}
+        <div className="mb-4">
+          <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300">
+            {MONTHS.map((month, index) => (
+              <button
+                key={month}
+                onClick={() => setSelectedMonth(index)}
+                className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                  selectedMonth === index
+                    ? 'bg-blue-700 text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {month}
+              </button>
             ))}
+          </div>
+          
+          {/* Display Meeting Date */}
+          <div className="mt-3 text-center">
+            <p className="text-lg font-bold text-gray-900">
+              {MONTHS[selectedMonth]} {meetingDay}
+            </p>
+            <p className="text-sm text-gray-600">
+              Meeting Time: {meetingTime}
+            </p>
           </div>
         </div>
 
-        {/* Tab Content */}
-        <div className="bg-white rounded-b-lg border-2 border-gray-100">
-          {renderTabContent()}
-          <div className="h-32"></div>
+        {/* Notice */}
+        {isCurrentMonth && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-4">
+            <p className="text-xs text-red-500 font-semibold leading-tight">
+              *ONLY CHECK DUE IF MEMBER PAYS FULLY<br/>
+              OTHERWISE, PUT THE AMOUNT
+            </p>
+          </div>
+        )}
+
+        {!isCurrentMonth && (
+          <div className="bg-gray-50 border-l-4 border-gray-400 p-3 mb-4">
+            <p className="text-sm text-gray-600">
+              Viewing {MONTHS[selectedMonth]} {selectedYear}. Only current month can be edited.
+            </p>
+          </div>
+        )}
+
+        {/* Attendance Table */}
+        {activeTab === 'attendance' && (
+          <div className="bg-white rounded-lg overflow-hidden mb-6 shadow-sm border border-gray-200">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100 border-b-2 border-gray-300">
+                  <tr>
+                    <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Name</th>
+                    <th className="text-center py-3 px-2 text-sm font-bold text-gray-700">Present</th>
+                    <th className="text-center py-3 px-2 text-sm font-bold text-gray-700">Absent</th>
+                    <th className="text-center py-3 px-2 text-sm font-bold text-gray-700">Excused</th>
+                    <th className="text-center py-3 px-2 text-sm font-bold text-gray-700">Due</th>
+                    <th className="text-center py-3 px-4 text-sm font-bold text-gray-700">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {members.map((member) => (
+                    <tr key={member.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-4 px-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {formatMemberName(member.surname, member.givenName)}
+                        </div>
+                      </td>
+                      <td className="text-center py-4 px-2">
+                        <label className="inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={attendance[member.id]?.present || false}
+                            onChange={() => handlePresentChange(member.id)}
+                            disabled={!isCurrentMonth}
+                            className="w-5 h-5 text-green-600 rounded focus:ring-2 focus:ring-green-500 disabled:opacity-50 cursor-pointer"
+                          />
+                        </label>
+                      </td>
+                      <td className="text-center py-4 px-2">
+                        <label className="inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={attendance[member.id]?.absent || false}
+                            onChange={() => handleAbsentChange(member.id)}
+                            disabled={!isCurrentMonth}
+                            className="w-5 h-5 text-red-600 rounded focus:ring-2 focus:ring-red-500 disabled:opacity-50 cursor-pointer"
+                          />
+                        </label>
+                      </td>
+                      <td className="text-center py-4 px-2">
+                        <div className="flex items-center justify-center space-x-2">
+                          <label className="inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={attendance[member.id]?.excused || false}
+                              onChange={() => handleExcusedChange(member.id)}
+                              disabled={!isCurrentMonth}
+                              className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50 cursor-pointer"
+                            />
+                          </label>
+                          {attendance[member.id]?.excused && (
+                            <button
+                              onClick={() => openExcuseModal(member.id)}
+                              className="text-blue-600 hover:text-blue-800 transition-colors p-1 hover:bg-blue-50 rounded"
+                              title="View/Edit Excuse Letter"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-center py-4 px-2">
+                        <label className="inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={attendance[member.id]?.dueChecked || false}
+                            onChange={() => handleDueChange(member.id)}
+                            disabled={!isCurrentMonth}
+                            className="w-5 h-5 text-purple-600 rounded focus:ring-2 focus:ring-purple-500 disabled:opacity-50 cursor-pointer"
+                          />
+                        </label>
+                      </td>
+                      <td className="text-center py-4 px-4">
+                        <input
+                          type="number"
+                          value={attendance[member.id]?.dueAmount || ''}
+                          onChange={(e) => handleDueAmountChange(member.id, e.target.value)}
+                          disabled={!isCurrentMonth}
+                          placeholder="0"
+                          className="w-24 px-3 py-2 text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
+                          min="0"
+                          step="1"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-100 border-t-2 border-gray-300">
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-bold text-gray-900 uppercase">Total</td>
+                    <td className="px-2 py-3 text-center">
+                      <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-800">
+                        {totals.present}
+                      </span>
+                    </td>
+                    <td className="px-2 py-3 text-center">
+                      <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-sm font-bold bg-red-100 text-red-800">
+                        {totals.absent}
+                      </span>
+                    </td>
+                    <td className="px-2 py-3 text-center">
+                      <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">
+                        {totals.excused}
+                      </span>
+                    </td>
+                    <td className="px-2 py-3 text-center">
+                      <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-sm font-bold bg-purple-100 text-purple-800">
+                        {totals.duesPaid}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-lg font-bold text-gray-900">
+                        ₱{totals.totalAmount.toFixed(2)}
+                      </span>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Financial Tab Content */}
+        {activeTab === 'financial' && (
+          <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Financial Summary</h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-4 bg-purple-50 rounded-lg">
+                <span className="font-semibold text-gray-700">Members Paid Dues</span>
+                <span className="text-2xl font-bold text-purple-600">{totals.duesPaid}</span>
+              </div>
+              <div className="flex justify-between items-center p-4 bg-green-50 rounded-lg">
+                <span className="font-semibold text-gray-700">Total Amount Collected</span>
+                <span className="text-2xl font-bold text-green-600">₱{totals.totalAmount.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Expenses Tab Content */}
+        {activeTab === 'expenses' && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-900">Expenses & Fund Usage</h3>
+                {isCurrentMonth && (
+                  <button
+                    onClick={() => setShowExpenseForm(!showExpenseForm)}
+                    className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Add Expense</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Add Expense Form */}
+            {isCurrentMonth && showExpenseForm && (
+              <div className="p-6 bg-blue-50 border-b border-gray-200">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Expense Description
+                    </label>
+                    <input
+                      type="text"
+                      value={expenseForm.description}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                      placeholder="e.g., Altar supplies, Candles, etc."
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Amount (₱)
+                    </label>
+                    <input
+                      type="number"
+                      value={expenseForm.amount}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Reason for Fund Use
+                    </label>
+                    <textarea
+                      value={expenseForm.reason}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, reason: e.target.value })}
+                      placeholder="Explain the purpose and details of this expense..."
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none h-24"
+                    />
+                  </div>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => {
+                        setShowExpenseForm(false);
+                        setExpenseForm({ description: '', amount: '', reason: '' });
+                      }}
+                      className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-400 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddExpense}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                    >
+                      Save Expense
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Expenses List */}
+            <div className="p-6">
+              {expenses.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No expenses recorded yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {expenses.map((expense) => (
+                    <div key={expense.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-gray-900">{expense.description}</h4>
+                          <p className="text-sm text-gray-600 mt-1">{expense.reason}</p>
+                        </div>
+                        <div className="text-right ml-4">
+                          <p className="text-lg font-bold text-blue-600">₱{expense.amount.toFixed(2)}</p>
+                          {isCurrentMonth && (
+                            <button
+                              onClick={() => handleDeleteExpense(expense.id)}
+                              className="text-red-600 hover:text-red-800 text-sm mt-2 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Total */}
+                  <div className="mt-6 pt-4 border-t-2 border-gray-300">
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-bold text-gray-900">Total Expenses</span>
+                      <span className="text-2xl font-bold text-orange-600">₱{expensesTotals.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Save Button */}
+        {isCurrentMonth && hasUnsavedChanges && (
+          <div className="mb-6 mt-6">
+            <button
+              onClick={handleSaveAttendance}
+              className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg transition-colors"
+            >
+              SAVE CHANGES
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-blue-800 rounded-t-3xl shadow-lg">
+        <div className="flex justify-around items-center py-4 px-6">
+          <Link href="/admin" className="flex flex-col items-center text-white">
+            <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+          </Link>
+          <button className="flex flex-col items-center text-white">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+          <button className="flex flex-col items-center text-white">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      {/* Remove Confirmation Modal - keeping original design */}
-      {removeConfirmation.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full">
-            <div className="p-6">
-              <div className="flex items-center mb-4">
-                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
-                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+      {/* Meeting Date & Time Editor Modal */}
+      {showDateTimeEditor && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="bg-blue-600 text-white p-6 rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold">Set Monthly Meeting</h3>
+                <button
+                  onClick={() => setShowDateTimeEditor(false)}
+                  className="text-white/80 hover:text-white"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Remove Member</h3>
+                </button>
+              </div>
+              <p className="text-blue-100 mt-2">
+                {MONTHS[selectedMonth]} {selectedYear}
+              </p>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Meeting Date
+                </label>
+                <input
+                  type="date"
+                  value={meetingDate}
+                  onChange={(e) => setMeetingDate(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default: First Sunday of the month</p>
               </div>
               
-              <p className="text-gray-600 mb-6">
-                Are you sure you want to remove <span className="font-semibold">
-                  {removeConfirmation.member && formatMemberName(removeConfirmation.member.surname, removeConfirmation.member.givenName)}
-                </span> from the ministry? This action cannot be undone.
-              </p>
-              
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
-                <div className="flex">
-                  <svg className="w-5 h-5 text-yellow-400 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                  <div className="text-sm">
-                    <p className="text-yellow-800 font-medium">Warning</p>
-                    <p className="text-yellow-700">This will delete all member data including attendance records and login credentials.</p>
-                  </div>
-                </div>
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Meeting Time
+                </label>
+                <input
+                  type="time"
+                  value={meetingTime}
+                  onChange={(e) => setMeetingTime(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default: 12:00 PM (Noon)</p>
               </div>
 
               <div className="flex space-x-3">
                 <button
-                  onClick={handleCancelRemove}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={() => setShowDateTimeEditor(false)}
+                  className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleConfirmRemove}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  onClick={handleSaveMeetingDateTime}
+                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors"
                 >
-                  Remove Member
+                  Save
                 </button>
               </div>
             </div>
@@ -762,516 +875,68 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Member Details Modal - keeping original but with gradient header */}
-      {selectedMember && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div 
-              className="p-6 rounded-t-2xl"
-              style={{
-                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-              }}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-white">Member Details</h2>
-                <button
-                  onClick={() => setSelectedMember(null)}
-                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
-                >
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+      {/* Excuse Letter Modal */}
+      {showExcuseModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-blue-600 text-white p-6 rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold flex items-center space-x-2">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
-                </button>
-              </div>
-
-              <div className="text-center">
-                <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-3">
-                  <span className="text-white font-bold text-2xl">
-                    {selectedMember.surname.charAt(0)}
-                  </span>
-                </div>
-                <h3 className="text-xl font-semibold text-white">
-                  {formatMemberName(selectedMember.surname, selectedMember.givenName)}
+                  <span>Excuse Letter</span>
                 </h3>
+                <button
+                  onClick={() => setShowExcuseModal(false)}
+                  className="text-white/80 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-lg"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
+              {selectedMember && (
+                <p className="text-blue-100 mt-2">
+                  {(() => {
+                    const member = members.find(m => m.id === selectedMember);
+                    return member ? formatMemberName(member.surname, member.givenName) : '';
+                  })()}
+                </p>
+              )}
             </div>
-
             <div className="p-6">
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-500 mb-1">Age</p>
-                    <p className="font-medium">{selectedMember.age} years old</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Service Level</p>
-                    <span 
-                      className="inline-block px-2 py-1 text-xs font-medium text-white rounded"
-                      style={{
-                        background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                      }}
-                    >
-                      {selectedMember.serviceLevel}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Birthday</p>
-                    <p className="font-medium">{new Date(selectedMember.birthdate).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Years of Service</p>
-                    <p className="font-medium">{selectedMember.yearsOfService} years</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-500 mb-1">Email</p>
-                    <p className="font-medium">{selectedMember.email}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-500 mb-1">Parent Contact</p>
-                    <p className="font-medium">{selectedMember.parentContact}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-500 mb-1">Address</p>
-                    <p className="font-medium">{selectedMember.address}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Date Joined</p>
-                    <p className="font-medium">{new Date(selectedMember.dateJoined).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Status</p>
-                    <span className="inline-block px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
-                      {selectedMember.memberStatus}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex space-x-3 pt-4">
-                  <button 
-                    style={{
-                      background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                    }}
-                    className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
-                  >
-                    Edit Member
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setSelectedMember(null);
-                      handleRemoveClick(selectedMember);
-                    }}
-                    className="flex-1 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Member Form Modal - with gradient header */}
-      {showAddMemberForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div 
-              className="p-6 rounded-t-2xl"
-              style={{
-                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-              }}
-            >
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-white">Add New Member</h2>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Excuse Letter Details
+              </label>
+              <textarea
+                value={excuseText}
+                onChange={(e) => setExcuseText(e.target.value)}
+                placeholder="Enter excuse letter details here..."
+                className="w-full h-48 px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none transition-colors"
+                disabled={!isCurrentMonth}
+              />
+              <div className="flex space-x-3 mt-6">
                 <button
-                  onClick={() => setShowAddMemberForm(false)}
-                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
-                  disabled={submitting}
-                >
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleMemberSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Surname (Last Name) *
-                </label>
-                <input
-                  type="text"
-                  name="surname"
-                  value={memberFormData.surname}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                  placeholder="Enter surname"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Given Name (First Name) *
-                </label>
-                <input
-                  type="text"
-                  name="givenName"
-                  value={memberFormData.givenName}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                  placeholder="Enter given name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email (Optional)
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  value={memberFormData.email}
-                  onChange={handleMemberChange}
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                  placeholder="email@example.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Username *
-                </label>
-                <input
-                  type="text"
-                  name="username"
-                  value={memberFormData.username}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                  placeholder="Choose a username"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Password *
-                </label>
-                <input
-                  type="password"
-                  name="password"
-                  value={memberFormData.password}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                  placeholder="Minimum 6 characters"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirm Password *
-                </label>
-                <input
-                  type="password"
-                  name="confirmPassword"
-                  value={memberFormData.confirmPassword}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                  placeholder="Confirm password"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Birthday *
-                </label>
-                <input
-                  type="date"
-                  name="birthday"
-                  value={memberFormData.birthday}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                />
-                {memberFormData.birthday && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    Age: {calculateAge(memberFormData.birthday)} years old
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Address *
-                </label>
-                <textarea
-                  name="address"
-                  value={memberFormData.address}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  rows={3}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                  placeholder="Enter complete address"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Parent Contact Number *
-                </label>
-                <input
-                  type="tel"
-                  name="parentContact"
-                  value={memberFormData.parentContact}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                  placeholder="+63 9XX XXX XXXX"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date of Investiture *
-                </label>
-                <input
-                  type="date"
-                  name="dateOfInvestiture"
-                  value={memberFormData.dateOfInvestiture}
-                  onChange={handleMemberChange}
-                  required
-                  disabled={submitting}
-                  max={new Date().toISOString().split('T')[0]}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                />
-                {memberFormData.dateOfInvestiture && (
-                  <div className="mt-2 text-sm">
-                    <p className="text-gray-600">
-                      Years of Service: {calculateYearsOfService(memberFormData.dateOfInvestiture)} years
-                    </p>
-                    <p className="text-gray-600">
-                      Service Level: <span 
-                        className="px-2 py-1 rounded-full text-xs font-medium text-white"
-                        style={{
-                          background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                        }}
-                      >
-                        {determineServiceLevel(calculateYearsOfService(memberFormData.dateOfInvestiture))}
-                      </span>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowAddMemberForm(false)}
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:bg-gray-100"
+                  onClick={() => setShowExcuseModal(false)}
+                  className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  style={{
-                    background: submitting ? '#93c5fd' : 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-                  }}
-                  className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
-                >
-                  {submitting ? (
-                    <div className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Creating...
-                    </div>
-                  ) : (
-                    "Add Member"
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add Officer Form Modal - with gradient header */}
-      {showAddOfficerForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div 
-              className="p-6 rounded-t-2xl"
-              style={{
-                background: 'linear-gradient(135deg, #4169E1 0%, #000080 100%)'
-              }}
-            >
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-white">Appoint Officer</h2>
-                <button
-                  onClick={() => setShowAddOfficerForm(false)}
-                  className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white/30"
-                  disabled={submitting}
-                >
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                {isCurrentMonth && (
+                  <button
+                    onClick={saveExcuseLetter}
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                    </svg>
+                    <span>Save Letter</span>
+                  </button>
+                )}
               </div>
             </div>
-
-            <form onSubmit={handleOfficerSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Member *
-                </label>
-                <select
-                  name="memberId"
-                  value={officerFormData.memberId}
-                  onChange={handleOfficerChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                >
-                  <option value="">Choose a member...</option>
-                  {getAvailableMembers().map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {formatMemberName(member.surname, member.givenName)} ({member.serviceLevel})
-                    </option>
-                  ))}
-                </select>
-                {getAvailableMembers().length === 0 && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    No available members (all active members are already officers)
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Position *
-                </label>
-                <select
-                  name="position"
-                  value={officerFormData.position}
-                  onChange={handleOfficerChange}
-                  required
-                  disabled={submitting}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                >
-                  <option value="">Select position...</option>
-                  {getAvailablePositions().map((position) => (
-                    <option key={position} value={position}>
-                      {position}
-                    </option>
-                  ))}
-                </select>
-                {getAvailablePositions().length === 0 && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    All positions are already filled
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date of Appointment *
-                </label>
-                <input
-                  type="date"
-                  name="dateAppointed"
-                  value={officerFormData.dateAppointed}
-                  onChange={handleOfficerChange}
-                  required
-                  disabled={submitting}
-                  max={new Date().toISOString().split('T')[0]}
-                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowAddOfficerForm(false)}
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:bg-gray-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || getAvailableMembers().length === 0 || getAvailablePositions().length === 0}
-                  style={{
-                    background: (submitting || getAvailableMembers().length === 0 || getAvailablePositions().length === 0) 
-                      ? '#9ca3af' 
-                      : 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                  }}
-                  className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-opacity"
-                >
-                  {submitting ? (
-                    <div className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Appointing...
-                    </div>
-                  ) : (
-                    "Appoint Officer"
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Navigation - Hidden when any modal is open */}
-      {!isModalOpen && (
-        <div 
-          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-[30px] p-4 shadow-2xl z-50"
-          style={{
-            background: '#000080',
-            transform: 'translateX(-50%)'
-          }}
-        >
-          <div className="flex justify-center space-x-8 px-4">
-            <button
-              onClick={() => router.push('/admin')}
-              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
-            >
-              <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-              </svg>
-              <span className="text-xs">Home</span>
-            </button>
-            <button
-              onClick={() => router.push('/admin/daily-attendance')}
-              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
-            >
-              <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              <span className="text-xs">Attendance</span>
-            </button>
-            <button
-              onClick={() => router.push('/admin/birthdays')}
-              className="flex flex-col items-center text-white/70 hover:text-white transition-colors"
-            >
-              <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m9 5.197v0M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              <span className="text-xs">Birthdays</span>
-            </button>
           </div>
         </div>
       )}
